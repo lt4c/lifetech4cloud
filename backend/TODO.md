@@ -1,0 +1,10 @@
+- [ ] Analyze requirements
+- [x] Set up necessary files
+- [x] Update WorkerClient API calls
+- [x] Update database models for new worker system
+- [x] Update VPS service with worker selection logic
+- [x] Add admin coin editing functionality
+- [ ] Update backend API endpoints
+- [ ] Update frontend for admin coin editing
+- [ ] Ensure server-side worker calls only
+- [ ] Test implementation

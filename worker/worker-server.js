@@ -1,0 +1,498 @@
+const express = require('express');
+const puppeteer = require('puppeteer');
+const bodyParser = require('body-parser');
+const cookieParser = require('cookie-parser');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { exec } = require('child_process');
+const axios = require('axios');
+
+// Worker token file
+const WORKER_TOKEN_FILE = 'worker-tokens.json';
+
+const app = express();
+
+function securityMiddleware(req, res, next) {
+  // Removed origin blocking for broader access
+  next();
+}
+
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+app.use(cookieParser());
+app.use(express.static('public'));
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'public'));
+
+function f1(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function performNvidiaLogin(email, password) {
+  let browser = null;
+  try {
+    console.log(`Starting NVIDIA login for ${email}`);
+
+    browser = await puppeteer.launch({
+      headless: false,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+
+    await page.goto('https://learn.learn.nvidia.com/login', { waitUntil: 'networkidle0' });
+
+    await page.waitForSelector('#email', { visible: true, timeout: 10000 });
+    await page.type('#email', email);
+    await page.click('button[type="submit"]');
+    await page.waitForSelector('#signinPassword', { visible: true, timeout: 40000 });
+    await page.type('#signinPassword', password);
+    await page.click('#passwordLoginButton');
+
+    console.log('Waiting for login completion...');
+    await new Promise(resolve => setTimeout(resolve, 1 * 30 * 1000));
+
+    let currentUrl = page.url();
+    console.log('Current URL after password click:', currentUrl);
+
+    if (!currentUrl.includes('/dashboard')) {
+      console.log('Not on dashboard, waiting for navigation...');
+      try {
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+        currentUrl = page.url();
+        console.log('URL after navigation wait:', currentUrl);
+      } catch (navError) {
+        console.log('Navigation timeout, checking current URL...');
+        currentUrl = page.url();
+        console.log('Current URL after timeout:', currentUrl);
+      }
+    }
+
+    if (!currentUrl.includes('/dashboard')) {
+      console.log('Still not on dashboard, direct navigation...');
+      await page.goto('https://learn.learn.nvidia.com/dashboard', { waitUntil: 'networkidle2', timeout: 15000 });
+    } else {
+      console.log('Successfully landed on dashboard');
+    }
+
+    await f1(15000);
+
+    const cookies = await page.cookies();
+    console.log('All cookies found:', cookies.length);
+
+    const sessionCookie = cookies.find(c => c.name === 'sessionid');
+    console.log('Session cookie details:', sessionCookie ? {
+      name: sessionCookie.name,
+      value: sessionCookie.value.substring(0, 20) + '...',
+      domain: sessionCookie.domain,
+      expires: sessionCookie.expires
+    } : 'none');
+
+    console.log('Session cookie check:', sessionCookie ? 'found' : 'not found');
+
+    if (sessionCookie && sessionCookie.value.length > 10) {
+      console.log('Authentication successful - saving token');
+
+      let tokenData = {};
+      if (fs.existsSync(WORKER_TOKEN_FILE)) {
+        try {
+          tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
+        } catch (e) {
+          tokenData = {};
+        }
+      }
+
+      // For worker tokens, use token as key with slot and inuse
+      tokenData[sessionCookie.value] = {
+        slot: 3,
+        inuse: false
+      };
+
+      fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+
+      console.log(`Token saved successfully for worker system`);
+      return { success: true, message: 'Authentication successful', token: sessionCookie.value };
+    } else {
+      console.log('Authentication failed - no valid session cookie');
+      return { success: false, message: 'Authentication failed - no session cookie' };
+    }
+
+  } catch (error) {
+    console.error(`NVIDIA login error for ${email}:`, error.message);
+    return { success: false, message: error.message };
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+        console.log('Browser closed successfully');
+      } catch (closeError) {
+        console.log('Error closing browser:', closeError.message);
+      }
+    }
+  }
+}
+
+// Login endpoint for worker tokens
+app.post('/yud-ranyisi', securityMiddleware, async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password required' });
+  }
+
+  console.log('New account login for worker system:', email);
+
+  const result = await performNvidiaLogin(email, password);
+
+  if (result.success) {
+    res.json(true);
+  } else {
+    res.status(401).json({ error: result.message });
+  }
+});
+
+// VM creation endpoint
+app.post('/vm-loso', securityMiddleware, async (req, res) => {
+  const { action } = req.body; // Expecting 1, 2, or 3
+
+  if (![1, 2, 3].includes(parseInt(action))) {
+    return res.status(400).json({ error: 'Invalid action. Must be 1, 2, or 3' });
+  }
+
+  let tokenData = {};
+  if (fs.existsSync(WORKER_TOKEN_FILE)) {
+    try {
+      tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
+    } catch (e) {
+      return res.status(500).json({ error: 'Invalid worker token file' });
+    }
+  }
+
+  // Find available token (slot >= 1 and not in use)
+  const availableTokens = Object.keys(tokenData).filter(token =>
+    tokenData[token].slot >= 1 && tokenData[token].inuse === false
+  );
+
+  if (availableTokens.length === 0) {
+    return res.status(400).json({ error: 'No available tokens' });
+  }
+
+  // Pick random token
+  const selectedToken = availableTokens[Math.floor(Math.random() * availableTokens.length)];
+
+  // Decrement slot and set in use
+  tokenData[selectedToken].slot -= 1;
+  tokenData[selectedToken].inuse = true;
+
+  // Create random route
+  const route = 'quack_' + Math.random().toString(36).substring(2, 7);
+
+  // Save updated token data
+  fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+
+  // Determine which script to run based on action (scripts are in same directory)
+  let scriptFile;
+  switch (parseInt(action)) {
+    case 1:
+      scriptFile = 'linux.js';
+      break;
+    case 2:
+      scriptFile = 'win10.js';
+      break;
+    case 3:
+      scriptFile = '2z2.js';
+      break;
+  }
+
+  // Start the VM creation process with tunnel URL
+  const { spawn } = require('child_process');
+  const vmProcess = spawn('node', [scriptFile, selectedToken, route, tunnelUrl || ''], {
+    stdio: 'inherit',
+    detached: true,
+    cwd: __dirname
+  });
+
+  vmProcess.unref();
+
+  console.log(`Started ${scriptFile} with token ${selectedToken} and route ${route}`);
+
+  res.json({ logUrl: `/log/${route}` });
+});
+
+// Serve logs - read txt files corresponding to route in worker directory
+// Cloudflare tunnel setup
+let tunnelUrl = null;
+let tunnelApp = null;
+
+async function downloadCloudflared() {
+  return new Promise((resolve, reject) => {
+    const isWindows = process.platform === 'win32';
+    const downloadUrl = isWindows
+      ? 'https://github.com/cloudflare/cloudflared/releases/download/2025.9.1/cloudflared-windows-amd64.exe'
+      : 'https://github.com/cloudflare/cloudflared/releases/download/2025.9.1/cloudflared-linux-amd64';
+
+    const fileName = isWindows ? 'cloudflared.exe' : 'cloudflared';
+    const filePath = path.join(__dirname, fileName);
+
+    console.log('Downloading cloudflared from:', downloadUrl);
+
+    const https = require('https');
+    const fs = require('fs');
+    const file = fs.createWriteStream(filePath);
+
+    https.get(downloadUrl, (response) => {
+      response.pipe(file);
+      file.on('finish', () => {
+        file.close();
+        if (!isWindows) {
+          exec(`chmod +x "${filePath}"`, (error) => {
+            if (error) {
+              console.log('Error making cloudflared executable:', error.message);
+            }
+            resolve(filePath);
+          });
+        } else {
+          resolve(filePath);
+        }
+      });
+    }).on('error', (error) => {
+      console.log('Error downloading cloudflared:', error.message);
+      fs.unlink(filePath, () => {});
+      reject(error);
+    });
+  });
+}
+
+function setupCloudflareTunnel() {
+  return new Promise(async (resolve) => {
+    const isWindows = process.platform === 'win32';
+    const cloudflaredPaths = isWindows
+      ? ['cloudflared.exe', './cloudflared.exe', 'C:\\cloudflared\\cloudflared.exe']
+      : ['cloudflared', './cloudflared', '/usr/local/bin/cloudflared'];
+
+    let cloudflaredPath = null;
+
+    for (const path of cloudflaredPaths) {
+      try {
+        await new Promise((resolveCheck, rejectCheck) => {
+          exec(`"${path}" --version`, (error, stdout) => {
+            if (!error && stdout) {
+              cloudflaredPath = path;
+              resolveCheck();
+            } else {
+              rejectCheck();
+            }
+          });
+        });
+        break;
+      } catch (e) {}
+    }
+
+    // Download if not found
+    if (!cloudflaredPath) {
+      try {
+        console.log('Cloudflared not found, downloading...');
+        cloudflaredPath = await downloadCloudflared();
+        console.log('Cloudflared downloaded to:', cloudflaredPath);
+      } catch (error) {
+        console.log('Failed to download cloudflared, skipping tunnel setup');
+        resolve();
+        return;
+      }
+    }
+
+    console.log('Setting up Cloudflare tunnel...');
+
+    tunnelApp = express();
+    tunnelApp.use(bodyParser.json());
+
+    tunnelApp.post('/sshx', (req, res) => {
+      const { sshx, route } = req.body;
+      if (sshx && route) {
+        const logFile = path.join(__dirname, `${route}.txt`);
+        fs.appendFileSync(logFile, `SSHx Link: ${sshx}\n`);
+        console.log(`SSHx link received for route ${route}: ${sshx}`);
+        res.json({ success: true });
+      } else {
+        res.status(400).json({ error: 'Missing sshx or route' });
+      }
+    });
+
+    tunnelApp.listen(3001, () => {
+      console.log('SSHx receiver server running on port 3001');
+
+      const tunnelProcess = exec(`"${cloudflaredPath}" tunnel --url http://localhost:3001`, (error, stdout, stderr) => {
+        console.log('Tunnel process completed');
+        if (stdout) {
+          console.log('Tunnel stdout:', stdout);
+          const urlMatch = stdout.match(/https:\/\/[a-zA-Z0-9\-]+\.trycloudflare\.com/);
+          if (urlMatch) {
+            tunnelUrl = urlMatch[0];
+            console.log('Cloudflare tunnel established:', tunnelUrl);
+          }
+        }
+        if (stderr) {
+          console.log('Tunnel stderr:', stderr);
+        }
+        if (error) {
+          console.log('Tunnel error:', error.message);
+        }
+      });
+
+      tunnelProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        console.log('Tunnel output:', output);
+        const urlMatch = output.match(/https:\/\/[a-zA-Z0-9\-]+\.trycloudflare\.com/);
+        if (urlMatch && !tunnelUrl) {
+          tunnelUrl = urlMatch[0];
+          console.log('Cloudflare tunnel established:', tunnelUrl);
+        }
+      });
+
+      tunnelProcess.stderr.on('data', (data) => {
+        const output = data.toString();
+        console.log('Tunnel stderr output:', output);
+        const urlMatch = output.match(/https:\/\/[a-zA-Z0-9\-]+\.trycloudflare\.com/);
+        if (urlMatch && !tunnelUrl) {
+          tunnelUrl = urlMatch[0];
+          console.log('Cloudflare tunnel established:', tunnelUrl);
+        }
+      });
+
+      setTimeout(() => {
+        if (!tunnelUrl) {
+          console.log('Warning: Cloudflare tunnel URL not detected, but continuing...');
+        }
+        resolve();
+      }, 10000);
+    });
+  });
+}
+
+// Serve logs - read txt files corresponding to route in worker directory
+app.get('/log/:route', (req, res) => {
+  const route = req.params.route;
+  const logFile = path.join(__dirname, `${route}.txt`);
+
+  if (fs.existsSync(logFile)) {
+    const logs = fs.readFileSync(logFile, 'utf8');
+    // Ensure proper line breaks for readability (add HTML breaks for web viewing)
+    res.send(logs.replace(/\n/g, '<br>\n'));
+  } else {
+    res.status(404).send('Logs not found');
+  }
+});
+
+// Stop VM endpoint - send end_task to NVIDIA and reset token inuse status
+app.post('/stop/:route', securityMiddleware, async (req, res) => {
+  const route = req.params.route;
+
+  try {
+    // Find the token associated with this route
+    let tokenData = {};
+    if (fs.existsSync(WORKER_TOKEN_FILE)) {
+      tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
+    }
+
+    // Find which token is currently in use for this route
+    // Note: In a production system, we'd maintain a route-token mapping
+    let usedToken = null;
+    for (const [token, data] of Object.entries(tokenData)) {
+      if (data.inuse) {
+        usedToken = token;
+        break; // Assuming only one token is in use at a time per route
+      }
+    }
+
+    if (!usedToken) {
+      return res.status(400).json({ error: 'No active token found for this route' });
+    }
+
+    // Send end_task request to NVIDIA API
+    const headers = {
+      accept: "application/json, text/javascript, */*; q=0.01",
+      "accept-language": "en-US,en;q=0.9,vi;q=0.8",
+      "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "x-requested-with": "XMLHttpRequest",
+      cookie: `openedx-language-preference=en; sessionid=${usedToken}; edxloggedin=true; edx-user-info={"version": 1, "username": "nsnsnsnsnvnhh", "email": "thuonghai2711+hhjbvbjbay@gmail.com"}`
+    };
+
+    await axios.post('https://learn.learn.nvidia.com/courses/course-v1:DLI+S-ES-01+V1/xblock/block-v1:DLI+S-ES-01+V1+type@nvidia-dli-platform-gpu-task-xblock+block@f373f5a2e27a42a78a61f699899d3904/handler/end_task', "{}", { headers });
+
+    console.log(`End task request sent for route ${route} with token ${usedToken}`);
+
+    // Kill the VM process
+    const { exec } = require('child_process');
+    exec(`powershell -Command "Get-Process | Where-Object { $_.ProcessName -eq 'node' -and $_.CommandLine -like '*${route}*' } | Stop-Process -Force"`, (error, stdout, stderr) => {
+      if (error) {
+        console.log('PowerShell process kill result:', error.message);
+        // Fallback: try to kill all node processes except the server
+        exec(`taskkill /f /im node.exe /fi "PID ne ${process.pid}"`, (fallbackError) => {
+          if (fallbackError) {
+            console.log('Fallback process kill also failed:', fallbackError.message);
+          }
+        });
+      } else {
+        console.log('Successfully killed VM process for route:', route);
+      }
+    });
+
+    // Reset token inuse status
+    tokenData[usedToken].inuse = false;
+    fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+
+    // Add log entry about stopping
+    const logFile = path.join(__dirname, `${route}.txt`);
+    const logEntry = `\n=== VM STOPPED AT ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Bangkok' })} (GMT+7) ===\n`;
+    fs.appendFileSync(logFile, logEntry);
+
+    res.json({
+      success: true,
+      message: `VM stopped successfully for route ${route}`,
+      tokenReset: usedToken
+    });
+
+  } catch (error) {
+    console.error('Error stopping VM:', error.message);
+    res.status(500).json({ error: 'Failed to stop VM', details: error.message });
+  }
+});
+
+// Periodic token cleanup - run every 20 minutes
+setInterval(() => {
+  try {
+    let tokenData = {};
+    if (fs.existsSync(WORKER_TOKEN_FILE)) {
+      tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
+    }
+
+    const tokensToRemove = [];
+    for (const [token, data] of Object.entries(tokenData)) {
+      if (data.slot === 0) {
+        tokensToRemove.push(token);
+      }
+    }
+
+    if (tokensToRemove.length > 0) {
+      tokensToRemove.forEach(token => delete tokenData[token]);
+      fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+      console.log(`Worker server: Cleaned up ${tokensToRemove.length} expired tokens`);
+    }
+  } catch (error) {
+    console.error('Error during token cleanup:', error.message);
+  }
+}, 20 * 60 * 1000); // 20 minutes
+
+app.listen(4000, async () => {
+  console.log('Worker server running on port 4000');
+  console.log('Endpoints:');
+  console.log('  POST /yud-ranyisi - Login and add worker token');
+  console.log('  POST /vm-loso - Create VM (1=linux, 2=windows, 3=trash)');
+  console.log('  POST /stop/:route - Stop VM by route');
+  console.log('  GET /log/:route - Get VM logs');
+
+  // Setup Cloudflare tunnel for SSHx link receiving
+  await setupCloudflareTunnel();
+});

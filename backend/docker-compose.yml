@@ -1,0 +1,52 @@
+services:
+  backend:
+    build: .
+    env_file: .env
+    environment:
+      ALLOWED_ORIGINS: http://localhost:3048
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request, sys; sys.exit(urllib.request.urlopen('http://localhost:8000/health').getcode() != 200)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3048:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: lt4cdatacenter
+      POSTGRES_PASSWORD: lt4cdatacenter
+      POSTGRES_DB: lt4cdatafarm1
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lt4cdatacenter -d lt4cdatafarm1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

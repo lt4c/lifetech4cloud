@@ -1,0 +1,56 @@
+﻿services:
+  worker:
+    build:
+      context: .
+      dockerfile: worker_service/Dockerfile
+    environment:
+      WORKER_BACKEND_URL: http://backend:8000
+      WORKER_BASE_URL: http://worker:8476
+      WORKER_ADMIN_TOKEN: test_admin_token
+      WORKER_TOKEN_ID: 68eba7c8-694b-4e7b-94c2-7f280de0d0ea
+      WORKER_NAME: worker-local
+      WORKER_HEARTBEAT_SECONDS: "30"
+    depends_on:
+      backend:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8476/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - default
+    ports:
+      - "8476:8476"
+  backend:
+    build: .
+    env_file: .env
+    hostname: backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - default
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: lt4cdatacenter
+      POSTGRES_PASSWORD: lt4cdatacenter
+      POSTGRES_DB: lt4cdatafarm1
+    networks:
+      - default
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lt4cdatacenter -d lt4cdatafarm1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  postgres_data:
+
+networks:
+  default:

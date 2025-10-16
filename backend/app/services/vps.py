@@ -1,0 +1,242 @@
+from __future__ import annotations
+
+import secrets
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Tuple
+from uuid import UUID
+
+from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models import User, VpsProduct, VpsSession, Worker
+from app.services.event_bus import SessionEventBus
+from app.services.worker_client import WorkerClient
+from app.services.worker_selector import WorkerSelector
+
+CHECKLIST_TEMPLATE: List[Dict[str, object]] = [
+    {"key": "precheck", "label": "Kiem tra moi truong", "done": False},
+    {"key": "allocate", "label": "Cap phat tai nguyen", "done": False},
+    {"key": "pull-image", "label": "Keo image DLI", "done": False},
+    {"key": "provision", "label": "Khoi tao VPS", "done": False},
+    {"key": "networking", "label": "Thiet lap mang", "done": False},
+    {"key": "credentials", "label": "Tao thong tin dang nhap", "done": False},
+    {"key": "verification", "label": "Kiem tra san sang", "done": False},
+    {"key": "finalize", "label": "Hoan tat", "done": False},
+]
+
+
+class VpsService:
+    def __init__(self, db: Session, event_bus: SessionEventBus | None = None) -> None:
+        self.db = db
+        self.event_bus = event_bus
+
+    def list_products(self, *, active_only: bool) -> List[VpsProduct]:
+        stmt = select(VpsProduct).order_by(VpsProduct.created_at.desc())
+        if active_only:
+            stmt = stmt.where(VpsProduct.is_active.is_(True))
+        return list(self.db.scalars(stmt))
+
+    def _load_product(self, product_id: UUID) -> VpsProduct:
+        product = self.db.get(VpsProduct, product_id)
+        if not product or not product.is_active:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product unavailable")
+        return product
+
+    def _find_idempotent(self, user_id: UUID, key: str) -> VpsSession | None:
+        stmt = (
+            select(VpsSession)
+            .where(VpsSession.user_id == user_id)
+            .where(VpsSession.idempotency_key == key)
+        )
+        return self.db.scalars(stmt).first()
+
+    def list_sessions_for_user(self, user: User) -> List[VpsSession]:
+        stmt = (
+            select(VpsSession)
+            .where(VpsSession.user_id == user.id)
+            .order_by(VpsSession.created_at.desc())
+        )
+        return list(self.db.scalars(stmt))
+
+    def _initial_session(
+        self,
+        *,
+        user: User,
+        product: VpsProduct,
+        worker: Worker,
+        idempotency_key: str,
+    ) -> Tuple[VpsSession, str]:
+        now = datetime.now(timezone.utc)
+        session_token = secrets.token_urlsafe(32)
+        checklist = [{**item, "done": False, "ts": None} for item in CHECKLIST_TEMPLATE]
+        session = VpsSession(
+            user_id=user.id,
+            product_id=product.id,
+            worker_id=worker.id,
+            session_token=session_token,
+            status="pending",
+            checklist=checklist,
+            idempotency_key=idempotency_key,
+            created_at=now,
+            updated_at=now,
+            expires_at=now + timedelta(days=30),
+        )
+        return session, session_token
+
+    async def purchase_and_create(
+        self,
+        *,
+        user: User,
+        product_id: UUID,
+        idempotency_key: str,
+        worker_client: WorkerClient,
+        callback_base: str,  # kept for backwards compatibility
+    ) -> tuple[VpsSession, bool]:
+        _ = callback_base  # placeholder – callbacks handled server-to-server
+        key = idempotency_key.strip()
+        if not key:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing Idempotency-Key")
+
+        existing = self._find_idempotent(user.id, key)
+        if existing:
+            return existing, False
+
+        product = self._load_product(product_id)
+        coins_before = user.coins or 0
+        if coins_before < product.price_coins:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient coin balance")
+
+        selector = WorkerSelector(self.db)
+        worker = selector.select_for_product(product.id)
+        if not worker:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="No worker available for product",
+            )
+
+        session, session_token = self._initial_session(
+            user=user,
+            product=product,
+            worker=worker,
+            idempotency_key=key,
+        )
+
+        user.coins = coins_before - product.price_coins
+        self.db.add_all([session, user])
+        self.db.commit()
+        self.db.refresh(session)
+
+        if self.event_bus:
+            await self.event_bus.publish(
+                session.id,
+                {
+                    "event": "checklist.update",
+                    "data": {"items": session.checklist},
+                },
+            )
+            await self.event_bus.publish(
+                session.id,
+                {
+                    "event": "status.update",
+                    "data": {"status": session.status},
+                },
+            )
+
+        try:
+            route, log_url = await worker_client.create_vm(worker=worker, action=product.provision_action)
+        except HTTPException:
+            # bubble HTTP errors directly to client
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            session.status = "failed"
+            session.updated_at = datetime.now(timezone.utc)
+            user.coins = coins_before
+            self.db.add_all([session, user])
+            self.db.commit()
+            if self.event_bus:
+                await self.event_bus.publish(
+                    session.id,
+                    {
+                        "event": "status.update",
+                        "data": {"status": session.status},
+                    },
+                )
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Worker unreachable") from exc
+
+        session.worker_route = route
+        session.log_url = log_url
+        session.status = "provisioning"
+        session.updated_at = datetime.now(timezone.utc)
+        self.db.add(session)
+        self.db.commit()
+
+        if self.event_bus:
+            await self.event_bus.publish(
+                session.id,
+                {
+                    "event": "status.update",
+                    "data": {"status": session.status},
+                },
+            )
+        return session, True
+
+    def get_session_for_user(self, session_id: UUID, user: User) -> VpsSession:
+        session = self.db.get(VpsSession, session_id)
+        if not session or session.user_id != user.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        self._ensure_not_expired(session)
+        return session
+
+    def _ensure_not_expired(self, session: VpsSession) -> None:
+        if (
+            session.expires_at
+            and session.expires_at < datetime.now(timezone.utc)
+            and session.status not in {"expired", "deleted"}
+        ):
+            session.status = "expired"
+            session.updated_at = datetime.now(timezone.utc)
+            self.db.add(session)
+            self.db.commit()
+
+    async def delete_session(self, session: VpsSession, worker_client: WorkerClient) -> None:
+        if session.worker_id and session.worker_route:
+            worker = self.db.get(Worker, session.worker_id)
+            if worker:
+                try:
+                    await worker_client.stop_vm(worker=worker, route=session.worker_route)
+                except HTTPException:
+                    raise
+                except Exception as exc:  # pragma: no cover - defensive
+                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Worker stop failed") from exc
+
+        session.status = "deleted"
+        session.expires_at = datetime.now(timezone.utc)
+        session.updated_at = datetime.now(timezone.utc)
+        self.db.add(session)
+        self.db.commit()
+
+        if self.event_bus:
+            await self.event_bus.publish(
+                session.id,
+                {
+                    "event": "status.update",
+                    "data": {"status": session.status},
+                },
+            )
+
+    async def fetch_session_log(self, session: VpsSession, worker_client: WorkerClient) -> str:
+        if not session.worker_id or not session.worker_route:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Log not available")
+        worker = self.db.get(Worker, session.worker_id)
+        if not worker:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")
+        try:
+            return await worker_client.fetch_log(worker=worker, route=session.worker_route)
+        except HTTPException:
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Unable to fetch log") from exc
+
+
+__all__ = ["VpsService", "CHECKLIST_TEMPLATE"]

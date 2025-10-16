@@ -1,0 +1,191 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cảnh báo an ninh mạng</title>
+  <meta name="description" content="Thông báo cảnh báo an ninh mạng. Hệ thống được giám sát, mọi truy cập trái phép sẽ bị xử lý theo pháp luật." />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-0: #06140e;        /* xanh lục rất đậm, gợi CAND */
+      --bg-1: #0c2419;
+      --bg-2: #113120;
+      --text: #f5f7fa;
+      --muted: #c6d4c9;
+      --brand-red: #c1121f;   /* đỏ cờ */
+      --brand-gold: #ffd166;  /* vàng sao */
+      --accent: #2a6f4e;      /* viền xanh */
+      --border: rgba(255,255,255,0.08);
+      --shadow: 0 28px 70px rgba(0,0,0,0.65);
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, Tahoma, Arial, sans-serif;
+    }
+
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      background:
+        radial-gradient(1200px 600px at 50% -10%, rgba(193,18,31,0.12), transparent 60%),
+        radial-gradient(900px 500px at -10% 110%, rgba(42,111,78,0.18), transparent 60%),
+        linear-gradient(180deg, var(--bg-0), var(--bg-1) 40%, var(--bg-2) 100%);
+      color: var(--text);
+    }
+
+    .wrapper {
+      width: min(760px, 92vw);
+      padding: 32px 28px;
+      border-radius: 16px;
+      background: linear-gradient(160deg, rgba(13,29,21,0.92), rgba(9,22,16,0.96));
+      box-shadow: var(--shadow), inset 0 0 0 1px var(--border);
+      text-align: center;
+      position: relative;
+      overflow: clip;
+      isolation: isolate;
+    }
+
+    .ribbon {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #d21a27, var(--brand-red));
+      color: var(--brand-gold);
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      box-shadow: 0 16px 40px rgba(210,26,39,0.45);
+      border: 1px solid rgba(255,209,102,0.25);
+    }
+    .ribbon svg { width: 20px; height: 20px; fill: var(--brand-gold); flex: 0 0 auto; }
+
+    h1 {
+      margin: 22px 0 8px;
+      font-size: clamp(2rem, 4.6vw, 2.8rem);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .subtitle {
+      margin: 0 auto 16px;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 1.03rem;
+      max-width: 60ch;
+    }
+
+    .panel {
+      margin-top: 22px;
+      padding: 18px 18px 6px;
+      border-radius: 14px;
+      background: rgba(10,24,18,0.7);
+      border: 1px solid rgba(42,111,78,0.4);
+      text-align: left;
+    }
+    .panel h2 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #ffd166;
+    }
+    .panel ul {
+      margin: 0 0 10px 1.2rem;
+      padding: 0;
+      list-style: decimal;
+      color: #dde7e0;
+      line-height: 1.65;
+      font-size: 0.98rem;
+    }
+    .panel li + li { margin-top: 10px; }
+
+    .footer {
+      margin-top: 28px;
+      font-size: 0.92rem;
+      color: #a9b7ad;
+      letter-spacing: 0.04em;
+    }
+
+    .meta {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      font-size: 0.94rem;
+      color: #d8e4dc;
+    }
+    .meta .row {
+      display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;
+    }
+    .tag {
+      display: inline-flex; gap: 8px; align-items: center;
+      padding: 6px 10px; border: 1px solid var(--border); border-radius: 999px;
+      background: rgba(255,255,255,0.03);
+    }
+
+    @media (max-width: 600px) {
+      .wrapper { padding: 22px 18px; border-radius: 14px; }
+      .panel { padding: 16px; }
+    }
+
+    /* High-contrast focus for accessibility */
+    a, button { outline-color: #ffd166; }
+  </style>
+</head>
+<body>
+  <main class="wrapper" role="main" aria-labelledby="title">
+    <div class="ribbon" aria-label="Cảnh báo an ninh">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 2l7 4v6c0 5-3.6 9.7-7 10-3.4-.3-7-5-7-10V6l7-4zm0 2.2L7 6.6v5.2c0 3.8 2.6 7.8 5 8.2 2.4-.4 5-4.4 5-8.2V6.6l-5-2.4zm0 3.3a2.5 2.5 0 012.5 2.5c0 1.2-.8 2.2-1.8 2.4l1 3.6h-4l1-3.6A2.5 2.5 0 019.5 10 2.5 2.5 0 0112 7.5z"/>
+      </svg>
+      Cảnh báo an ninh
+    </div>
+
+    <h1 id="title">Hệ thống được giám sát</h1>
+    <p class="subtitle">
+      Mọi hoạt động truy cập không hợp lệ sẽ bị ghi nhận và xử lý theo quy định pháp luật. Rời khỏi trang này hoặc liên hệ bộ phận phụ trách nếu bạn có thẩm quyền truy cập hợp lệ.
+    </p>
+
+    <section class="panel" aria-labelledby="important-msg">
+      <h2 id="important-msg">Thông điệp quan trọng</h2>
+      <ul>
+        <li>Hệ thống thuộc sở hữu của cơ quan Nhà nước, được bảo vệ bằng các biện pháp an ninh nghiêm ngặt.</li>
+        <li>Mọi hành vi xâm nhập, khai thác lỗ hổng hoặc thu thập dữ liệu trái phép đều vi phạm pháp luật, sẽ bị điều tra và xử lý.</li>
+        <li>Địa chỉ IP, thời gian, trình duyệt và hành vi truy cập của bạn đang được ghi nhận để phục vụ công tác bảo đảm an ninh.</li>
+      </ul>
+    </section>
+
+    <div class="meta" aria-label="Thông tin liên hệ và tham chiếu">
+      <div class="row">
+        <span class="tag" aria-label="Đường dây nóng">
+          <!-- phone icon -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.6 10.8a15.5 15.5 0 006.6 6.6l2.2-2.2a1 1 0 011-.25 11.6 11.6 0 003.6.6 1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1 11.6 11.6 0 00.6 3.6 1 1 0 01-.25 1L6.6 10.8z"/></svg>
+          Đường dây nóng: null
+        </span>
+        <span class="tag" aria-label="Email hỗ trợ">
+          <!-- mail icon -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+          support@lt4c.io.vn
+        </span>
+      </div>
+      <div class="row" role="note">
+        <span class="tag">Discord: https://discord.gg/NQRH5P8ekF</span>
+        <span class="tag">Phiên bản backend: 1.0.1</span>
+      </div>
+    </div>
+    
+    <p class="footer">
+      Hệ thống LifeTech4Code © <span id="yr"></span>. Bản quyền thuộc về LifeTech4Code. Mọi quyền được bảo lưu.
+    </p>
+    
+    <script>
+      const s = 2024;
+      const y = new Date().getFullYear();
+      document.getElementById("yr").textContent = s === y ? s : s + "–" + y;
+    </script>
+
+  </main>
+</body>
+</html>

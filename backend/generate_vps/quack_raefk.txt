@@ -1,0 +1,17 @@
+New linux.py started with token: 1|2allp7c5vbtgo669fp6mn160i9shw167|wJ6gG1EgJkTj|IjA1MjY0NDY1MTAxMWM3MzMzZWU5OTU5NTUwMjQxNjdlNmU3YWYyYTk3NDA0MjhkODRlODgyN2IwN2RhNWEzMWQi:1v3trz:8SWnACqHeeVx4DipO91ycZGqexc, route: quack_raefk, tunnel: https://complications-chem-bryan-packing.trycloudflare.com
+Started terminal with session: 1|2allp7c...
+Checking: quack_raefk
+Checked! Waitting to start!
+Waiting for lab creating ...
+Done!
+Lab created...
+NVIDIA Lab Navigation Error: Failed to navigate to NVIDIA lab: Page.goto: net::ERR_ADDRESS_INVALID at http://dli-08b0a8f4dce4-26560d.westus2.cloudapp.azure.com/lab/?token=e4fbc3a2220845534da93a10cebbd070
+Call log:
+  - navigating to "http://dli-08b0a8f4dce4-26560d.westus2.cloudapp.azure.com/lab/?token=e4fbc3a2220845534da93a10cebbd070", waiting until "networkidle"
+
+This may indicate the NVIDIA lab environment failed to start properly.
+Please try creating a new VM - NVIDIA labs may be temporarily unavailable.
+quackuser@quack_raefk:~$ syop
+syop: command not found
+quackuser@quack_raefk:~$ stop
+VM creation stopped and route deleted.

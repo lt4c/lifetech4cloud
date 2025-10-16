@@ -1,0 +1,2 @@
+quackuser@quack_6vh5c:~$ stop
+VM creation stopped and route deleted.

@@ -1,0 +1,29 @@
+{
+  "name": "lt4c-renderer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express + Puppeteer + Cloudflared Tunnel",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "main": "worker-server.js",
+  "scripts": {
+    "start": "node worker-server.js",
+    "dev": "nodemon --watch . --ext js,cjs,mjs,json --exec node worker-server.js",
+    "tunnel": "cloudflared tunnel --url http://localhost:${PORT:-4000}",
+    "start:tunnel": "concurrently -k -n api,tunnel \"npm:start\" \"npm:tunnel\"",
+    "health": "node -e \"fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+  },
+  "dependencies": {
+    "axios": "^1.5.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pino": "^9.4.0",
+    "puppeteer": "^23.7.0",
+    "cookie-parser": "^1.4.6"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1",
+    "nodemon": "^3.1.7"
+  }
+}
