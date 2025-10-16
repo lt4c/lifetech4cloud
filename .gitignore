@@ -37,4 +37,4 @@ yarn-error.log*
 *.tmp
 worker/worker-tokens.json
 backend/generate_vps/token.json
-backend/frontend/
+/frontend/
