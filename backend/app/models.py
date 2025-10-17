@@ -163,7 +163,7 @@ class VpsSession(Base):
     session_token = Column(Text, nullable=False)
     status = Column(String(32), nullable=False, server_default="pending")
     checklist = Column(
-        MutableList.as_mutable(JSONB), nullable=False, server_default=text("'[]'::jsonb")
+        MutableList.as_mutable(JSONB), nullable=False, server_default=text("'[]'")
     )
     rdp_host = Column(String(255), nullable=True)
     rdp_port = Column(Integer, nullable=True)
@@ -291,7 +291,7 @@ class Announcement(Base):
     content = Column(Text, nullable=False)
     hero_image_url = Column(String(500), nullable=True)
     attachments = Column(
-        MutableList.as_mutable(JSONB), nullable=False, server_default=text("'[]'::jsonb")
+        MutableList.as_mutable(JSONB), nullable=False, server_default=text("'[]'")
     )
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
