@@ -145,7 +145,7 @@ jobs:
           port: ${{ env.SSH_PORT }}
           key: ${{ secrets.SSH_KEY }}
           source: ${{ env.ARCHIVE_NAME }}
-          target: ${{ format('{0}/releases/{1}', env.DEPLOY_PATH, env.ARCHIVE_NAME) }}
+          target: ${{ format('{0}/releases', env.DEPLOY_PATH) }}
 
       - name: Deploy on remote host
         if: steps.secrets-check.outputs.should_deploy == 'true'
