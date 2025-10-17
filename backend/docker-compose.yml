@@ -3,7 +3,7 @@
     build: .
     env_file: .env
     environment:
-      ALLOWED_ORIGINS: http://localhost:3048
+      ALLOWED_ORIGINS: https://dash.lt4c.io.vn
       FORWARDED_ALLOW_IPS: "*"
     depends_on:
       db:
@@ -28,7 +28,7 @@
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE_URL: http://localhost:8000
+        VITE_API_BASE_URL: https://api.lt4c.io.vn
     ports:
       - "3048:80"
     depends_on:
