@@ -41,4 +41,5 @@ The first successful workflow run will populate `/opt/lt4c/backend/current` with
 ## Notes
 - Local development continues to rely on the repository `.env`. The workflow explicitly excludes every `.env` file from the deployment archive so production secrets stay remote.
 - If you later add background workers or extra services, extend `docker-compose.yml` as usual; the pipeline already rebuilds and restarts the entire Compose project.
+- The GitHub Actions workflow lives at the repository root (`.github/workflows/backend-ci-cd.yml`) and explicitly works from the `backend/` subdirectory when building, testing, and packaging the app.
 - The workflow adds concurrency protection (`backend-refs/heads/main`) so only one deployment runs at a time, preventing overlapping releases.
