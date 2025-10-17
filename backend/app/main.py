@@ -224,7 +224,7 @@ Gặp kẻ ra tay, nguồn hóa diều.
 
 - Author: Ducknodevis -
 - 10/04/2025 -
-- CI/CD Complete YES-
+- CI/CD Complete yayayayyay-
 """
     return Response(content=BAITHO1, media_type="text/plain; charset=utf-8")
 
