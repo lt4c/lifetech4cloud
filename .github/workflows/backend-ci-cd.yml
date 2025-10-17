@@ -52,7 +52,7 @@ jobs:
     name: Build and deploy
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/main' && env.SSH_HOST != '' && env.SSH_USER != '' && env.SSH_KEY != '' && env.DEPLOY_PATH != ''
+    if: github.ref == 'refs/heads/main'
     timeout-minutes: 30
     env:
       SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -65,10 +65,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check deployment secrets
+        id: secrets-check
+        run: |
+          missing=()
+          for name in SSH_HOST SSH_USER SSH_KEY DEPLOY_PATH; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "Missing secrets: ${missing[*]}"
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "All deployment secrets present"
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Abort deployment (secrets missing)
+        if: steps.secrets-check.outputs.should_deploy != 'true'
+        run: |
+          echo "Skipping deploy job because some secrets are missing. Configure SSH_HOST, SSH_USER, SSH_KEY, DEPLOY_PATH."
+          exit 0
+
       - name: Validate Docker build
+        if: steps.secrets-check.outputs.should_deploy == 'true'
         run: docker build --tag backend-ci-validate:latest ./backend
 
       - name: Create deployment archive
+        if: steps.secrets-check.outputs.should_deploy == 'true'
         working-directory: backend
         run: >
           tar --exclude='./.git'
@@ -79,6 +105,7 @@ jobs:
           -czf "$ARCHIVE_NAME" .
 
       - name: Ensure remote deployment directory exists
+        if: steps.secrets-check.outputs.should_deploy == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -91,6 +118,7 @@ jobs:
             mkdir -p "$DEPLOY_PATH/releases" "$DEPLOY_PATH/current"
 
       - name: Upload release archive
+        if: steps.secrets-check.outputs.should_deploy == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -101,6 +129,7 @@ jobs:
           target: ${{ format('{0}/releases/{1}', env.DEPLOY_PATH, env.ARCHIVE_NAME) }}
 
       - name: Deploy on remote host
+        if: steps.secrets-check.outputs.should_deploy == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
