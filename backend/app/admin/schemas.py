@@ -17,6 +17,12 @@ class CsrfTokenResponse(BaseModel):
     token: str
 
 
+class AssetUploadResponse(BaseModel):
+    code: str
+    url: str
+    content_type: str
+
+
 class RoleSummary(BaseModel):
     id: UUID
     name: str
