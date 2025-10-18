@@ -56,10 +56,7 @@ else:
 
 @app.middleware("http")
 async def ensure_cors_headers(request: Request, call_next):
-    if request.method == "OPTIONS":
-        response = Response(status_code=status.HTTP_204_NO_CONTENT)
-    else:
-        response = await call_next(request)
+    response = await call_next(request)
 
     allowed_origins = settings.allowed_origins_list
     origin = request.headers.get("origin")
@@ -86,6 +83,8 @@ async def ensure_cors_headers(request: Request, call_next):
         else:
             response.headers.setdefault("Access-Control-Allow-Headers", "*")
         response.headers.setdefault("Access-Control-Max-Age", "600")
+        if response.status_code in {status.HTTP_404_NOT_FOUND, status.HTTP_405_METHOD_NOT_ALLOWED}:
+            response = Response(status_code=status.HTTP_204_NO_CONTENT, headers=dict(response.headers))
 
     return response
 
