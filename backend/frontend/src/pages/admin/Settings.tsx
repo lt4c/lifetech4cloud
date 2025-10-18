@@ -4,12 +4,14 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   fetchAdsSettings,
   fetchKyaroPrompt,
   updateKyaroPrompt,
+  uploadAdminAsset,
 } from "@/lib/api-client";
-import type { AdsSettings, KyaroPrompt } from "@/lib/types";
+import type { AdsSettings, AssetUploadResponse, KyaroPrompt } from "@/lib/types";
 import { toast } from "@/components/ui/sonner";
 
 export default function Settings() {
@@ -29,6 +31,8 @@ export default function Settings() {
 
   const [draftPrompt, setDraftPrompt] = useState("");
   const [touched, setTouched] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadedAsset, setUploadedAsset] = useState<AssetUploadResponse | null>(null);
 
   useEffect(() => {
     if (kyaro?.prompt !== undefined && !touched) {
@@ -50,6 +54,19 @@ export default function Settings() {
   });
   const promptChanged = useMemo(() => draftPrompt !== (kyaro?.prompt ?? ""), [draftPrompt, kyaro?.prompt]);
   const promptValid = draftPrompt.trim().length > 0;
+
+  const uploadMutation = useMutation({
+    mutationFn: uploadAdminAsset,
+    onSuccess: (data) => {
+      setUploadedAsset(data);
+      toast("Asset uploaded successfully.");
+      setSelectedFile(null);
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to upload asset.";
+      toast(message);
+    },
+  });
 
   return (
     <div className="space-y-8">
@@ -115,6 +132,44 @@ export default function Settings() {
               </Button>
             </div>
             {!promptValid && <p className="text-xs text-destructive">Prompt cannot be empty.</p>}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="glass-card">
+          <CardHeader>
+            <CardTitle>Upload Asset</CardTitle>
+            <CardDescription>
+              Images are stored under <code className="font-mono text-xs">/assets/&lt;code&gt;</code> and served via CDN.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                setSelectedFile(file);
+              }}
+            />
+            <div className="flex justify-end">
+              <Button
+                onClick={() => selectedFile && uploadMutation.mutate(selectedFile)}
+                disabled={!selectedFile || uploadMutation.isLoading}
+              >
+                {uploadMutation.isLoading ? "Uploading..." : "Upload"}
+              </Button>
+            </div>
+            {uploadedAsset && (
+              <div className="text-sm">
+                <p className="font-medium">Uploaded:</p>
+                <p className="break-all">{uploadedAsset.url}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  MIME: {uploadedAsset.content_type} • Code: {uploadedAsset.code}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

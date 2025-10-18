@@ -46,6 +46,7 @@ DEFAULT_PERMISSIONS: Dict[str, str] = {
     "notification:create": "Publish platform announcements",
     "notification:update": "Edit platform announcements",
     "notification:delete": "Delete platform announcements",
+    "asset:upload": "Upload asset images",
 }
 
 ROLE_PERMISSION_MAP: Dict[str, Iterable[str]] = {

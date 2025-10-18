@@ -7,20 +7,19 @@ from alembic import command
 from alembic.config import Config
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from . import utils
 from .admin import init_admin
 from .auth import DiscordOAuthClient
 from .deps import get_current_user, get_db
-from .models import User
+from .models import Asset, User
 from .schemas import HealthStatus, UserProfile
 from .settings import get_settings
 
-from sqlalchemy import func, select
 
 from app.admin.seed import grant_role_to_user
 from app.api import ads as ads_router
@@ -34,6 +33,7 @@ from app.services.support_event_bus import SupportEventBus
 from app.services.kyaro import KyaroAssistant
 from app.services.worker_client import WorkerClient
 from app.admin.models import Role, UserRole
+from app.admin.services import assets as asset_service
 
 settings = get_settings()
 logger = logging.getLogger("uvicorn.error")
@@ -130,6 +130,8 @@ def _preflight_headers(request: Request) -> tuple[dict[str, str], bool]:
 oauth_client = DiscordOAuthClient(settings=settings)
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 BASE_DIR = Path(__file__).resolve().parent.parent
+ASSETS_DIR = BASE_DIR / "assets"
+ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def run_db_migrations() -> None:
@@ -315,6 +317,21 @@ async def read_me(
     )
 
 
+@app.get("/assets/{code}", include_in_schema=False)
+async def serve_asset(code: str, db: Session = Depends(get_db)) -> FileResponse:
+    asset = asset_service.get_asset_by_code(db, code)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
+    file_path = ASSETS_DIR / asset.stored_path
+    if not file_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found.")
+    return FileResponse(
+        path=file_path,
+        media_type=asset.content_type,
+        filename=asset.original_filename or asset.stored_path,
+    )
+
+
 @app.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout() -> Response:
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -343,5 +360,3 @@ async def on_shutdown() -> None:
     client = getattr(app.state, "worker_client", None)
     if client is not None:
         await client.aclose()
-
-

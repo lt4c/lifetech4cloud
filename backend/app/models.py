@@ -84,6 +84,19 @@ class AdminToken(Base):
     creator = relationship("User", back_populates="admin_tokens")
 
 
+class Asset(Base):
+    __tablename__ = "assets"
+    __table_args__ = (UniqueConstraint("code", name="uq_assets_code"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code = Column(String(16), nullable=False)
+    stored_path = Column(String(255), nullable=False)
+    original_filename = Column(String(255), nullable=True)
+    content_type = Column(String(128), nullable=False)
+    uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 vps_product_workers = Table(
     "vps_product_workers",
     Base.metadata,

@@ -25,6 +25,9 @@ build/
 pnpm-lock.yaml
 yarn.lock
 
+# Uploaded assets
+assets/
+
 # Logs
 *.log
 npm-debug.log*

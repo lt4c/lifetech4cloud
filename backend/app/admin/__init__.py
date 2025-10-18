@@ -15,6 +15,8 @@ from .routers import vps_products as vps_products_router
 from .routers import workers as workers_router
 from .routers import support as support_router
 from .routers import announcements as announcements_router
+from .routers import assets as assets_router
+from .routers import admin_views as admin_views_router
 from .seed import seed_defaults
 
 
@@ -42,5 +44,7 @@ def init_admin(app: FastAPI) -> None:
     api_router.include_router(status_router.router)
     api_router.include_router(support_router.router)
     api_router.include_router(announcements_router.router)
+    api_router.include_router(assets_router.router)
 
+    app.include_router(admin_views_router.router, prefix=settings.prefix)
     app.include_router(api_router)

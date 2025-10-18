@@ -6,8 +6,14 @@ export interface UserProfile {
   avatar_url: string | null;
   phone_number: string | null;
   coins: number;
-   roles: string[];
-   is_admin: boolean;
+  roles: string[];
+  is_admin: boolean;
+}
+
+export interface AssetUploadResponse {
+  code: string;
+  url: string;
+  content_type: string;
 }
 
 export interface ChecklistItem {
@@ -15,7 +21,8 @@ export interface ChecklistItem {
   label: string | null;
   done: boolean;
   ts: string | null;
-  meta?: Record<string, unknown> | null;\n  attachments?: SupportAttachment[];
+  meta?: Record<string, unknown> | null;
+  attachments?: SupportAttachment[];
 }
 
 export interface VpsProduct {

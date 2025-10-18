@@ -14,6 +14,7 @@ import type {
   SupportThreadsResponse,
   AnnouncementDetail,
   AnnouncementSummary,
+  AssetUploadResponse,
   UserProfile,
   VpsProduct,
   VpsSession,
@@ -702,6 +703,16 @@ export const updateAnnouncement = async (
 
 export const deleteAnnouncement = async (id: string): Promise<void> => {
   await apiFetch<void>(`/api/v1/admin/announcements/${id}`, { method: "DELETE" });
+};
+
+/* Assets */
+export const uploadAdminAsset = async (file: File): Promise<AssetUploadResponse> => {
+  const body = new FormData();
+  body.append("file", file);
+  return apiFetch<AssetUploadResponse>("/api/v1/admin/assets/upload", {
+    method: "POST",
+    body,
+  });
 };
 
 /* Status / analytics */

@@ -15,6 +15,12 @@ class UserProfile(BaseModel):
     is_admin: bool = False
 
 
+class AssetUploadResponse(BaseModel):
+    code: str
+    url: str
+    content_type: str
+
+
 class HealthStatus(BaseModel):
     ok: bool
     database: bool
