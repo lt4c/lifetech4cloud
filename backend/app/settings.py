@@ -48,6 +48,19 @@ class Settings(BaseSettings):
             origin = f"{origin}:{parsed.port}"
         return origin
 
+    @classmethod
+    def _origin_variants(cls, value: str | AnyHttpUrl | None) -> list[str]:
+        origin = cls._origin_from_url(value)
+        if not origin:
+            return []
+        variants = [origin]
+        parsed = urlparse(origin)
+        if parsed.scheme == "http" and parsed.port in (None, 80):
+            https_origin = f"https://{parsed.hostname}"
+            if https_origin not in variants:
+                variants.append(https_origin)
+        return variants
+
     @property
     def allowed_origins_list(self) -> List[str]:
         raw = (self.allowed_origins or "").strip()
@@ -57,9 +70,11 @@ class Settings(BaseSettings):
         origins: List[str] = []
 
         def _add_origin(candidate: str | None) -> None:
-            if not candidate or candidate in origins:
+            if not candidate:
                 return
-            origins.append(candidate)
+            for item in self._origin_variants(candidate):
+                if item not in origins:
+                    origins.append(item)
 
         if raw:
             for entry in re.split(r"[\s,]+", raw):

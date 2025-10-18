@@ -72,3 +72,12 @@ def test_allowed_origins_normalises_url_path(monkeypatch):
         FRONTEND_REDIRECT_URL="https://other.example.com/home",
     )
     assert settings.allowed_origins_list == ["https://dash.lt4c.io.vn", "https://other.example.com"]
+
+
+def test_allowed_origins_upgrades_http_without_port(monkeypatch):
+    settings = build_settings(
+        monkeypatch,
+        ALLOWED_ORIGINS="",
+        FRONTEND_REDIRECT_URL="http://dash.lt4c.io.vn/dashboard",
+    )
+    assert settings.allowed_origins_list == ["http://dash.lt4c.io.vn", "https://dash.lt4c.io.vn"]

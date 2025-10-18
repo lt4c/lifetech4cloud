@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from alembic import command
@@ -35,6 +36,7 @@ from app.services.worker_client import WorkerClient
 from app.admin.models import Role, UserRole
 
 settings = get_settings()
+logger = logging.getLogger("uvicorn.error")
 app = FastAPI(title="Discord Login App")
 
 if settings.allowed_origins_list:
@@ -45,6 +47,9 @@ if settings.allowed_origins_list:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    logger.info("CORS enabled for origins: %s", settings.allowed_origins_list)
+else:
+    logger.warning("CORS middleware disabled; no allowed origins configured.")
 
 oauth_client = DiscordOAuthClient(settings=settings)
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -91,6 +96,14 @@ async def healthcheck(db: Session = Depends(get_db)) -> HealthStatus:
     except Exception:  # pragma: no cover - best effort
         db_status = False
     return HealthStatus(ok=True, database=db_status)
+
+
+@app.get("/health/config", include_in_schema=False)
+async def health_config() -> dict[str, object]:
+    return {
+        "allowed_origins": settings.allowed_origins_list,
+        "allow_credentials": bool(settings.allowed_origins_list),
+    }
 
 
 @app.get("/auth/discord/login", status_code=status.HTTP_302_FOUND)
