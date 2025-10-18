@@ -54,6 +54,52 @@ else:
     logger.warning("CORS middleware disabled; no allowed origins configured.")
 
 
+def _append_vary_header(response: Response, value: str) -> None:
+    existing = response.headers.get("Vary")
+    if not existing:
+        response.headers["Vary"] = value
+        return
+    values = {item.strip() for item in existing.split(",") if item.strip()}
+    if value not in values:
+        response.headers["Vary"] = f"{existing}, {value}"
+
+
+def _first_explicit_origin(origins: list[str]) -> str | None:
+    for candidate in origins:
+        if candidate and candidate != "*":
+            return candidate
+    return None
+
+
+@app.middleware("http")
+async def ensure_cors_headers(request: Request, call_next):
+    response = await call_next(request)
+    allowed_origins = settings.allowed_origins_list
+    if not allowed_origins:
+        return response
+
+    origin = request.headers.get("origin")
+    allow_all = "*" in allowed_origins
+
+    if allow_all:
+        response.headers.setdefault("Access-Control-Allow-Origin", "*")
+    elif origin and origin in allowed_origins:
+        response.headers.setdefault("Access-Control-Allow-Origin", origin)
+    else:
+        fallback = _first_explicit_origin(allowed_origins)
+        if fallback:
+            response.headers.setdefault("Access-Control-Allow-Origin", fallback)
+
+    header_value = response.headers.get("Access-Control-Allow-Origin")
+    if header_value and header_value != "*":
+        response.headers.setdefault("Access-Control-Allow-Credentials", "true")
+        _append_vary_header(response, "Origin")
+    elif header_value == "*":
+        response.headers.pop("Access-Control-Allow-Credentials", None)
+
+    return response
+
+
 def _preflight_headers(request: Request) -> tuple[dict[str, str], bool]:
     allowed_origins = settings.allowed_origins_list
     origin = request.headers.get("origin")
@@ -69,6 +115,12 @@ def _preflight_headers(request: Request) -> tuple[dict[str, str], bool]:
     if origin_allowed:
         headers["Access-Control-Allow-Origin"] = "*" if allow_all else origin  # type: ignore[arg-type]
         if not allow_all:
+            headers["Access-Control-Allow-Credentials"] = "true"
+            should_vary = True
+    else:
+        fallback = _first_explicit_origin(allowed_origins)
+        if fallback:
+            headers["Access-Control-Allow-Origin"] = fallback
             headers["Access-Control-Allow-Credentials"] = "true"
             should_vary = True
     return headers, should_vary
@@ -109,9 +161,10 @@ app.include_router(profile_router.router)
 @app.options("/{path:path}", include_in_schema=False)
 async def cors_preflight(path: str, request: Request) -> Response:
     headers, vary_origin = _preflight_headers(request)
+    response = Response(status_code=status.HTTP_204_NO_CONTENT, headers=headers)
     if vary_origin:
-        headers["Vary"] = "Origin"
-    return Response(status_code=status.HTTP_204_NO_CONTENT, headers=headers)
+        _append_vary_header(response, "Origin")
+    return response
 
 @app.get("/", include_in_schema=False)
 async def index(request: Request) -> Response:
