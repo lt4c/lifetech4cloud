@@ -19,20 +19,20 @@ const Announcements = () => {
     <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Announcements</h1>
+          <h1 className="text-3xl font-bold mb-2">Thông báo</h1>
           <p className="text-muted-foreground">
-            Stay up to date with platform changes, scheduled maintenance, and release highlights.
+            Cập nhật thay đổi nền tảng, lịch bảo trì và điểm nhấn phiên bản.
           </p>
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-muted-foreground">Loading announcements...</p>}
+      {isLoading && <p className="text-sm text-muted-foreground">Đang tải thông báo...</p>}
 
       {!isLoading && announcements.length === 0 && (
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle>No announcements yet</CardTitle>
-            <CardDescription>New messages from the team will appear here.</CardDescription>
+            <CardTitle>Chưa có thông báo</CardTitle>
+            <CardDescription>Thông điệp từ đội ngũ sẽ hiển thị tại đây.</CardDescription>
           </CardHeader>
         </Card>
       )}
@@ -48,7 +48,7 @@ const Announcements = () => {
             <CardHeader className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-lg">{item.title}</CardTitle>
-                <Badge variant="outline">Update</Badge>
+                <Badge variant="outline">Cập nhật</Badge>
               </div>
               {item.created_at && (
                 <p className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleString()}</p>
@@ -62,7 +62,7 @@ const Announcements = () => {
               )}
               <div className="mt-auto">
                 <Button asChild variant="secondary">
-                  <Link to={`/announcements/${item.slug}`}>Read full update</Link>
+                  <Link to={`/announcements/${item.slug}`}>Xem chi tiết</Link>
                 </Button>
               </div>
             </CardContent>
@@ -74,4 +74,3 @@ const Announcements = () => {
 };
 
 export default Announcements;
-
