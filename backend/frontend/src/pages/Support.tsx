@@ -65,7 +65,7 @@ const isImageLink = (attachment: SupportAttachment) => {
 };
 
 const timeAgo = (value: string | null | undefined) => {
-  if (!value) return "Unknown";
+  if (!value) return "Không rõ";
   try {
     const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
     const minutes = Math.round((new Date(value).getTime() - Date.now()) / 60000);
@@ -97,7 +97,7 @@ const sortMessagesChronologically = (messages: SupportThread["messages"]): Suppo
 const formatTicketId = (id: string) => `#${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
 const formatUserRef = (userId: string | null | undefined) =>
-  userId ? userId.replace(/-/g, "").slice(0, 10).toUpperCase() : "Guest";
+  userId ? userId.replace(/-/g, "").slice(0, 10).toUpperCase() : "Khách";
 
 const ThreadBadge = ({ status }: { status: SupportThread["status"] }) => {
   const variant =
@@ -108,7 +108,12 @@ const ThreadBadge = ({ status }: { status: SupportThread["status"] }) => {
       : status === "resolved"
       ? "bg-blue-500/20 text-blue-600"
       : "bg-muted text-muted-foreground";
-  return <Badge className={cn("px-2 py-0.5 uppercase", variant)}>{status}</Badge>;
+  const label =
+    status === "open" ? "Mở" :
+    status === "pending" ? "Đang chờ" :
+    status === "resolved" ? "Đã xử lý" :
+    "Đã đóng";
+  return <Badge className={cn("px-2 py-0.5 uppercase", variant)}>{label}</Badge>;
 };
 
 const AttachmentEditor = ({
@@ -135,7 +140,7 @@ const AttachmentEditor = ({
       {value.map((attachment, index) => (
         <div key={index} className="grid gap-2 md:grid-cols-[1fr,2fr,auto,auto] md:items-center">
           <Input
-            placeholder="Label"
+            placeholder="Nhãn"
             value={attachment.label}
             onChange={(event) => updateAttachment(index, { label: event.target.value })}
           />
@@ -149,18 +154,18 @@ const AttachmentEditor = ({
             onChange={(event) => updateAttachment(index, { kind: event.target.value as AttachmentDraft["kind"] })}
             className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
-            <option value="link">Link</option>
-            <option value="image">Image</option>
-            <option value="file">File</option>
+            <option value="link">Liên kết</option>
+            <option value="image">Ảnh</option>
+            <option value="file">Tệp</option>
           </select>
           <Button variant="ghost" size="sm" onClick={() => removeAttachment(index)}>
-            Remove
+            Xóa
           </Button>
         </div>
       ))}
       <Button variant="outline" size="sm" className="gap-2" onClick={() => onChange([...value, { ...defaultAttachment }])}>
         <Plus className="w-4 h-4" />
-        Attachment
+        Thêm đính kèm
       </Button>
     </div>
   );
@@ -203,9 +208,9 @@ const MessageBubble = ({
   const isAdmin = message.sender === "admin";
   const isAi = message.sender === "ai";
   const viewerIsAdmin = viewer === "admin";
-  const userLabel = viewerIsAdmin ? `User ${formatUserRef(thread.user_id ?? null)}` : "You";
-  const adminLabel = viewerIsAdmin ? message.role ?? "Support Agent" : "Support Team";
-  const senderLabel = isAi ? "Kyaro Assistant" : isUser ? userLabel : adminLabel;
+  const userLabel = viewerIsAdmin ? `Người dùng ${formatUserRef(thread.user_id ?? null)}` : "Bạn";
+  const adminLabel = viewerIsAdmin ? message.role ?? "Nhân viên hỗ trợ" : "Đội hỗ trợ";
+  const senderLabel = isAi ? "Trợ lý Kyaro" : isUser ? userLabel : adminLabel;
   const absoluteTime = message.created_at ? new Date(message.created_at).toLocaleString() : null;
 
   return (
@@ -243,7 +248,7 @@ const MessageBubble = ({
               <p className="whitespace-pre-wrap break-words">{message.content}</p>
             )
           ) : (
-            <p className="italic text-muted-foreground">No content provided.</p>
+            <p className="italic text-muted-foreground">Chưa có nội dung.</p>
           )}
         </div>
         {message.attachments && message.attachments.length > 0 && (
@@ -402,41 +407,41 @@ const Support = () => {
   const conversationTitle = useMemo(() => {
     if (selectedThread) {
       if (selectedThread.source === "ai") {
-        return "Kyaro Assistant";
+        return "Trợ lý Kyaro";
       }
-      return hasAdminAccess ? "Support Ticket" : "Support Team";
+      return hasAdminAccess ? "Yêu cầu hỗ trợ" : "Đội hỗ trợ";
     }
     if (hasAdminAccess) {
-      return "Conversation";
+      return "Cuộc hội thoại";
     }
-    return activeTab === "ai" ? "Kyaro Assistant" : "Support Team";
+    return activeTab === "ai" ? "Trợ lý Kyaro" : "Đội hỗ trợ";
   }, [selectedThread, hasAdminAccess, activeTab]);
 
   const conversationSubtitle = useMemo(() => {
     if (selectedThread) {
       if (selectedThread.source === "ai") {
-        return "Ask questions and get instant answers from Kyaro.";
+        return "Đặt câu hỏi và nhận câu trả lời tức thì.";
       }
       return hasAdminAccess
-        ? "Reply to the customer and keep the ticket status up to date."
-        : "Chat with the LT4C support crew about your issue.";
+        ? "Trả lời khách hàng và cập nhật trạng thái yêu cầu."
+        : "Trao đổi với đội hỗ trợ LT4C về vấn đề của bạn.";
     }
     if (hasAdminAccess) {
-      return "Select a thread from the list to view messages.";
+      return "Chọn một hội thoại từ danh sách để xem tin nhắn.";
     }
     return activeTab === "ai"
-      ? "Start a new assistant chat or pick a previous conversation."
-      : "Create a new ticket or continue an existing one.";
+      ? "Bắt đầu chat mới với trợ lý hoặc chọn cuộc trò chuyện cũ."
+      : "Tạo yêu cầu mới hoặc tiếp tục cuộc trò chuyện trước.";
   }, [selectedThread, hasAdminAccess, activeTab]);
 
   const conversationMeta = useMemo(() => {
     if (!selectedThread) return null;
-    const parts: string[] = [formatTicketId(selectedThread.id), `Status ${selectedThread.status.toUpperCase()}`];
+    const parts: string[] = [formatTicketId(selectedThread.id), `Trạng thái ${selectedThread.status.toUpperCase()}`];
     if (hasAdminAccess) {
-      parts.push(`User ${formatUserRef(selectedThread.user_id ?? null)}`);
+      parts.push(`Người dùng ${formatUserRef(selectedThread.user_id ?? null)}`);
     }
     if (selectedThread.updated_at) {
-      parts.push(`Updated ${timeAgo(selectedThread.updated_at)}`);
+      parts.push(`Cập nhật ${timeAgo(selectedThread.updated_at)}`);
     }
     return parts.join(" • ");
   }, [selectedThread, hasAdminAccess]);
@@ -618,7 +623,7 @@ const Support = () => {
       setSelectedThreadId(thread.id);
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Failed to contact assistant.";
+      const message = error instanceof Error ? error.message : "Không gửi được yêu cầu tới trợ lý.";
       toast(message);
     },
   });
@@ -645,7 +650,7 @@ const Support = () => {
       setSelectedThreadId(thread.id);
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Failed to send message.";
+      const message = error instanceof Error ? error.message : "Không gửi được tin nhắn.";
       toast(message);
     },
   });
@@ -663,7 +668,7 @@ const Support = () => {
       attachments: SupportAttachment[];
     }) => adminReplySupportThread(id, message, status, attachments),
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Failed to reply to thread.";
+      const message = error instanceof Error ? error.message : "Gửi phản hồi thất bại.";
       toast(message);
     },
   });
@@ -698,7 +703,7 @@ const Support = () => {
   const handleSendAi = async () => {
     const trimmed = aiMessage.trim();
     if (!trimmed) {
-      toast("Message cannot be empty.");
+      toast("Nội dung không được để trống.");
       return;
     }
     const attachments = cleanAttachments(aiAttachments);
@@ -715,7 +720,7 @@ const Support = () => {
   const handleSendHuman = async () => {
     const trimmed = humanMessage.trim();
     if (!trimmed) {
-      toast("Message cannot be empty.");
+      toast("Nội dung không được để trống.");
       return;
     }
     const attachments = cleanAttachments(humanAttachments);
@@ -732,7 +737,7 @@ const Support = () => {
     if (!selectedThread || !hasAdminAccess) return;
     const trimmed = adminReply.trim();
     if (!trimmed) {
-      toast("Message cannot be empty.");
+      toast("Nội dung không được để trống.");
       return;
     }
     const attachments = cleanAttachments(adminAttachments);
@@ -754,22 +759,22 @@ const Support = () => {
       return (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Threads</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Cuộc hội thoại</h3>
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as SupportThread["status"] | "all")}
               className="h-8 rounded-md border border-input bg-background px-2 text-xs shadow-sm"
             >
-              <option value="all">All statuses</option>
-              <option value="open">Open</option>
-              <option value="pending">Pending</option>
-              <option value="resolved">Resolved</option>
-              <option value="closed">Closed</option>
+              <option value="all">Tất cả trạng thái</option>
+              <option value="open">Mở</option>
+              <option value="pending">Đang chờ</option>
+              <option value="resolved">Đã xử lý</option>
+              <option value="closed">Đã đóng</option>
             </select>
           </div>
           <ScrollArea className="h-[70vh] rounded-md border border-border/30">
             <div className="space-y-2 p-2">
-              {summaries.length === 0 && <p className="text-xs text-muted-foreground px-2">No threads found.</p>}
+              {summaries.length === 0 && <p className="text-xs text-muted-foreground px-2">Không tìm thấy hội thoại.</p>}
               {summaries.map((summary) => (
               <button
                 key={summary.id}
@@ -783,10 +788,10 @@ const Support = () => {
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold">
-                      {summary.source === "ai" ? "AI Assistant" : `Ticket ${formatTicketId(summary.id)}`}
+                      {summary.source === "ai" ? "Trợ lý AI" : `Ticket ${formatTicketId(summary.id)}`}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      User {formatUserRef(summary.user_id)} • {timeAgo(summary.last_message_at ?? summary.updated_at)}
+                      Người dùng {formatUserRef(summary.user_id)} • {timeAgo(summary.last_message_at ?? summary.updated_at)}
                     </p>
                   </div>
                   <ThreadBadge status={summary.status} />
@@ -815,23 +820,23 @@ const Support = () => {
           className="w-full"
         >
           <TabsList className="grid grid-cols-2">
-            <TabsTrigger value="ai">AI Assistant</TabsTrigger>
-            <TabsTrigger value="human">Support Team</TabsTrigger>
+            <TabsTrigger value="ai">Trợ lý AI</TabsTrigger>
+            <TabsTrigger value="human">Đội hỗ trợ</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="flex items-center justify-between px-1">
           <p className="text-xs text-muted-foreground">
             {activeTab === "ai"
-              ? "Chat with Kyaro for quick, automated answers."
-              : "Talk directly with the human support team."}
+              ? "Trao đổi nhanh với Trợ lý Kyaro."
+              : "Trò chuyện trực tiếp với đội hỗ trợ."}
           </p>
           <Button variant="outline" size="sm" onClick={() => startNewConversation(activeTab)}>
-            {activeTab === "ai" ? "New AI chat" : "New ticket"}
+            {activeTab === "ai" ? "Tạo chat AI" : "Tạo yêu cầu mới"}
           </Button>
         </div>
         <ScrollArea className="h-[70vh] rounded-md border border-border/30">
           <div className="space-y-2 p-2">
-            {visibleThreads.length === 0 && <p className="text-xs text-muted-foreground px-2">No threads yet.</p>}
+            {visibleThreads.length === 0 && <p className="text-xs text-muted-foreground px-2">Chưa có hội thoại.</p>}
             {visibleThreads.map((thread) => (
               <button
                 key={thread.id}
@@ -845,10 +850,10 @@ const Support = () => {
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold">
-                      {thread.source === "ai" ? "Kyaro Assistant" : `Ticket ${formatTicketId(thread.id)}`}
+                      {thread.source === "ai" ? "Trợ lý Kyaro" : `Ticket ${formatTicketId(thread.id)}`}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {thread.source === "ai" ? "AI conversation" : "Support team"} • {timeAgo(thread.updated_at ?? thread.created_at)}
+                      {thread.source === "ai" ? "Cuộc trò chuyện AI" : "Đội hỗ trợ"} • {timeAgo(thread.updated_at ?? thread.created_at)}
                     </p>
                   </div>
                   <ThreadBadge status={thread.status} />
@@ -866,7 +871,7 @@ const Support = () => {
       return (
         <div className="space-y-4">
           <Textarea
-            placeholder="Ask the assistant..."
+            placeholder="Hỏi trợ lý..."
             value={aiMessage}
             onChange={(event) => setAiMessage(event.target.value)}
             className="min-h-[120px]"
@@ -874,7 +879,7 @@ const Support = () => {
           <AttachmentEditor value={aiAttachments} onChange={setAiAttachments} />
           <div className="flex justify-end">
             <Button onClick={handleSendAi} disabled={askMutation.isLoading}>
-              {askMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send"}
+              {askMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Gửi"}
             </Button>
           </div>
         </div>
@@ -885,7 +890,7 @@ const Support = () => {
       return (
         <div className="space-y-4">
           <Textarea
-            placeholder="Describe your issue..."
+            placeholder="Mô tả vấn đề của bạn..."
             value={humanMessage}
             onChange={(event) => setHumanMessage(event.target.value)}
             className="min-h-[120px]"
@@ -893,7 +898,7 @@ const Support = () => {
           <AttachmentEditor value={humanAttachments} onChange={setHumanAttachments} />
           <div className="flex justify-end">
             <Button onClick={handleSendHuman} disabled={humanMessageMutation.isLoading}>
-              {humanMessageMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create ticket"}
+              {humanMessageMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Tạo yêu cầu"}
             </Button>
           </div>
         </div>
@@ -905,7 +910,7 @@ const Support = () => {
       return (
         <div className="space-y-4">
           <Textarea
-            placeholder="Write a reply..."
+            placeholder="Nhập phản hồi..."
             value={adminReply}
             onChange={(event) => setAdminReply(event.target.value)}
             className="min-h-[140px]"
@@ -914,7 +919,7 @@ const Support = () => {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2">
               <label htmlFor="admin-status" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Status
+                Trạng thái
               </label>
               <select
                 id="admin-status"
@@ -923,17 +928,17 @@ const Support = () => {
                 className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm"
                 disabled={composerDisabled}
               >
-                <option value="open">Open</option>
-                <option value="pending">Pending</option>
-                <option value="resolved">Resolved</option>
-                <option value="closed">Closed</option>
+                <option value="open">Mở</option>
+                <option value="pending">Đang chờ</option>
+                <option value="resolved">Đã xử lý</option>
+                <option value="closed">Đã đóng</option>
               </select>
             </div>
             <AttachmentEditor value={adminAttachments} onChange={setAdminAttachments} />
           </div>
           <div className="flex justify-end">
             <Button onClick={handleAdminReply} disabled={composerDisabled || adminReplyMutation.isLoading}>
-              {adminReplyMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send reply"}
+              {adminReplyMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Gửi phản hồi"}
             </Button>
           </div>
         </div>
@@ -944,7 +949,7 @@ const Support = () => {
       return (
         <div className="space-y-4">
           <Textarea
-            placeholder="Ask the assistant..."
+            placeholder="Hỏi trợ lý..."
             value={aiMessage}
             onChange={(event) => setAiMessage(event.target.value)}
             className="min-h-[120px]"
@@ -952,7 +957,7 @@ const Support = () => {
           <AttachmentEditor value={aiAttachments} onChange={setAiAttachments} />
           <div className="flex justify-end">
             <Button onClick={handleSendAi} disabled={askMutation.isLoading}>
-              {askMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send"}
+              {askMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Gửi"}
             </Button>
           </div>
         </div>
@@ -962,7 +967,7 @@ const Support = () => {
     return (
       <div className="space-y-4">
         <Textarea
-          placeholder="Type your message..."
+          placeholder="Nhập tin nhắn..."
           value={humanMessage}
           onChange={(event) => setHumanMessage(event.target.value)}
           className="min-h-[120px]"
@@ -970,7 +975,7 @@ const Support = () => {
         <AttachmentEditor value={humanAttachments} onChange={setHumanAttachments} />
         <div className="flex justify-end">
           <Button onClick={handleSendHuman} disabled={humanMessageMutation.isLoading}>
-            {humanMessageMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send"}
+            {humanMessageMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Gửi"}
           </Button>
         </div>
       </div>
@@ -990,16 +995,16 @@ const Support = () => {
           <CardContent>
             <ScrollArea className="max-h-[55vh] rounded-md border border-border/20">
               <div className="space-y-6 p-4">
-                {isLoadingThreads && <p className="text-sm text-muted-foreground">Loading conversations...</p>}
+                {isLoadingThreads && <p className="text-sm text-muted-foreground">Đang tải hội thoại...</p>}
                 {!selectedThread && !isLoadingThreads && (
                   <div className="rounded-lg border border-dashed border-border/40 p-6 text-center text-muted-foreground">
                     <MessageSquare className="mx-auto mb-3 h-6 w-6 opacity-70" />
                     <p className="text-sm">
                       {hasAdminAccess
-                        ? "Select a thread from the list to view messages."
+                        ? "Chọn một hội thoại từ danh sách để xem tin nhắn."
                         : activeTab === "ai"
-                          ? "Ask Kyaro anything below or open an existing assistant chat."
-                          : "Describe your issue below to open a new ticket or revisit a previous one."}
+                          ? "Hỏi Kyaro bên dưới hoặc mở cuộc trò chuyện trước đó."
+                          : "Mô tả vấn đề để tạo yêu cầu mới hoặc tiếp tục cuộc trò chuyện cũ."}
                     </p>
                   </div>
                 )}
@@ -1015,11 +1020,11 @@ const Support = () => {
 
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle>{hasAdminAccess ? "Reply" : "Compose message"}</CardTitle>
+            <CardTitle>{hasAdminAccess ? "Phản hồi" : "Soạn tin nhắn"}</CardTitle>
             <CardDescription>
               {hasAdminAccess
-                ? "Reply to the selected conversation and optionally adjust its status."
-                : "Send a message, attach images or links, and receive real-time responses."}
+                ? "Trả lời cuộc trò chuyện đã chọn và tùy chỉnh trạng thái nếu cần."
+                : "Gửi tin nhắn, đính kèm ảnh hoặc liên kết và nhận phản hồi theo thời gian thực."}
             </CardDescription>
           </CardHeader>
           <CardContent>{renderComposer()}</CardContent>
@@ -1030,4 +1035,3 @@ const Support = () => {
 };
 
 export default Support;
-
