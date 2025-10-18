@@ -22,15 +22,15 @@ const formatCoins = (value: number) => value.toLocaleString(undefined, { maximum
 const isActiveSession = (session: VpsSession) => !["deleted", "expired"].includes(session.status);
 
 const timeAgo = (value: string | null) => {
-  if (!value) return "unknown";
+  if (!value) return "không rõ";
   try {
     return `${formatDistanceToNow(new Date(value), { addSuffix: true })}`;
   } catch {
-    return "unknown";
+    return "không rõ";
   }
 };
 
-const sessionTitle = (session: VpsSession) => session.product?.name || "VPS Session";
+const sessionTitle = (session: VpsSession) => session.product?.name || "Phiên VPS";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -84,12 +84,12 @@ export default function Dashboard() {
   const updatePromptMutation = useMutation({
     mutationFn: updateKyaroPrompt,
     onSuccess: (data) => {
-      toast("Kyaro prompt updated.");
+      toast("Đã cập nhật cấu hình Kyaro.");
       queryClient.setQueryData(["admin-settings", "kyaro"], data);
       setPromptTouched(false);
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Failed to update Kyaro prompt.";
+      const message = error instanceof Error ? error.message : "Cập nhật cấu hình Kyaro thất bại.";
       toast(message);
     },
   });
@@ -109,32 +109,32 @@ export default function Dashboard() {
 
   const stats = [
     {
-      title: "Active VPS",
+      title: "VPS đang hoạt động",
       value: sessionsLoading ? "..." : String(activeSessions.length),
-      description: `${readySessions.length} ready / ${provisioningSessions.length} provisioning`,
+      description: `${readySessions.length} đã sẵn sàng / ${provisioningSessions.length} đang khởi tạo`,
       icon: Server,
       accent: "text-primary",
     },
     {
-      title: "Coin Balance",
+      title: "Số dư coin",
       value: formatCoins(profile?.coins ?? 0),
-      description: "From your account wallet",
+      description: "Trong ví tài khoản của bạn",
       icon: Zap,
       accent: "text-warning",
     },
     {
-      title: "Support Threads",
+      title: "Hộp thư hỗ trợ",
       value: threadsLoading ? "..." : String(threads.length),
-      description: "AI + human support history",
+      description: "Lịch sử hỗ trợ từ AI và nhân viên",
       icon: MessageSquare,
       accent: "text-secondary",
     },
     ...(hasAdminAccess
       ? [
           {
-            title: "API Health",
-            value: healthStatus?.api_up ? "Online" : "Offline",
-            description: healthStatus?.version ? `Version ${healthStatus.version}` : "via /api/v1/admin/status/health",
+            title: "Tình trạng hệ thống",
+            value: healthStatus?.api_up ? "Hoạt động" : "Gián đoạn",
+            description: healthStatus?.version ? `Phiên bản ${healthStatus.version}` : "Theo dõi thời gian thực",
             icon: Activity,
             accent: healthStatus?.api_up ? "text-success" : "text-destructive",
           },
@@ -149,14 +149,14 @@ export default function Dashboard() {
     <div className="space-y-8">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Welcome back, {profile?.display_name || profile?.username || "operator"}!</h1>
+          <h1 className="text-3xl font-bold mb-2">Chào mừng trở lại, {profile?.display_name || profile?.username || "bạn"}!</h1>
           <p className="text-muted-foreground">
-            This dashboard reflects live data from the LT4C FastAPI backend. Sessions, support threads, and status checks are real.
+            Bảng điều khiển hiển thị dữ liệu thời gian thực, gồm phiên VPS, hỗ trợ và trạng thái hệ thống.
           </p>
         </div>
         <div className="flex gap-2">
           <Button className="gap-2" onClick={() => navigate("/vps")}>
-            Launch VPS
+            Khởi chạy VPS
             <ArrowRight className="w-4 h-4" />
           </Button>
         </div>
@@ -180,22 +180,22 @@ export default function Dashboard() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Jump into the areas powered by live endpoints</CardDescription>
+            <CardTitle>Hành động nhanh</CardTitle>
+            <CardDescription>Đi nhanh đến các khu vực chính</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <Button className="w-full justify-start" variant="outline" size="lg" onClick={() => navigate("/vps")}>
               <Server className="w-5 h-5 mr-3" />
-              Create New VPS Session
+              Tạo phiên VPS mới
             </Button>
             <Button className="w-full justify-start" variant="outline" size="lg" onClick={() => navigate("/support")}>
               <MessageSquare className="w-5 h-5 mr-3" />
-              Open Support Inbox
+              Mở hộp thư hỗ trợ
             </Button>
             {hasAdminAccess && (
               <Button className="w-full justify-start" variant="outline" size="lg" onClick={() => navigate("/admin/analytics")}>
                 <Activity className="w-5 h-5 mr-3" />
-                Inspect System Health
+                Xem tình trạng hệ thống
               </Button>
             )}
           </CardContent>
@@ -203,22 +203,22 @@ export default function Dashboard() {
 
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle>Support Summary</CardTitle>
-            <CardDescription>Threads served by AI assistant and human agents</CardDescription>
+            <CardTitle>Tổng quan hỗ trợ</CardTitle>
+            <CardDescription>Được phục vụ bởi trợ lý AI và nhân viên</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {threadsLoading && <p className="text-sm text-muted-foreground">Loading support history...</p>}
+            {threadsLoading && <p className="text-sm text-muted-foreground">Đang tải lịch sử hỗ trợ...</p>}
             {!threadsLoading && threads.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No support conversations yet. Start one from the Support page.
+                Chưa có cuộc trò chuyện hỗ trợ. Vào trang Hỗ trợ để bắt đầu.
               </p>
             )}
             {!threadsLoading &&
               threads.slice(0, 4).map((thread: SupportThread) => (
                 <div key={thread.id} className="flex items-center justify-between rounded-lg border border-border/40 px-4 py-3">
                   <div>
-                    <p className="text-sm font-medium capitalize">{thread.source} assistant</p>
-                    <p className="text-xs text-muted-foreground">Updated {timeAgo(thread.updated_at)}</p>
+                    <p className="text-sm font-medium capitalize">{thread.source} trợ lý</p>
+                    <p className="text-xs text-muted-foreground">Cập nhật {timeAgo(thread.updated_at)}</p>
                   </div>
                   <span className="text-xs font-semibold uppercase text-muted-foreground">{thread.status}</span>
                 </div>
@@ -232,9 +232,9 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <PenLine className="w-4 h-4" />
-              Kyaro Prompt
+              Cấu hình Kyaro
             </CardTitle>
-            <CardDescription>Adjust how the assistant responds across the platform.</CardDescription>
+            <CardDescription>Tinh chỉnh cách trợ lý phản hồi trên toàn nền tảng.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <Textarea
@@ -244,12 +244,12 @@ export default function Dashboard() {
                 setPromptTouched(true);
               }}
               className="h-48 glass-card"
-              placeholder="Describe how Kyaro should respond to admins and users..."
+              placeholder="Mô tả cách Kyaro nên trả lời quản trị viên và người dùng..."
               disabled={kyaroLoading || updatePromptMutation.isLoading}
             />
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Version: {kyaroPrompt?.version ?? "--"}</span>
-              <span>Updated at: {kyaroPrompt?.updated_at ?? "--"}</span>
+              <span>Phiên bản: {kyaroPrompt?.version ?? "--"}</span>
+              <span>Cập nhật lúc: {kyaroPrompt?.updated_at ?? "--"}</span>
             </div>
             <div className="flex justify-end gap-2">
               <Button
@@ -260,31 +260,31 @@ export default function Dashboard() {
                 }}
                 disabled={!promptChanged || updatePromptMutation.isLoading}
               >
-                Reset
+                Hoàn tác
               </Button>
               <Button
                 onClick={() => updatePromptMutation.mutate(promptDraft.trim())}
                 disabled={!promptChanged || !promptValid || updatePromptMutation.isLoading}
               >
-                {updatePromptMutation.isLoading ? "Saving..." : "Save Prompt"}
+                {updatePromptMutation.isLoading ? "Đang lưu..." : "Lưu cấu hình"}
               </Button>
             </div>
-            {!promptValid && <p className="text-xs text-destructive">Prompt cannot be empty.</p>}
+            {!promptValid && <p className="text-xs text-destructive">Nội dung không được để trống.</p>}
           </CardContent>
         </Card>
       )}
 
       <Card className="glass-card">
         <CardHeader>
-          <CardTitle>Recent VPS Activity</CardTitle>
+          <CardTitle>Hoạt động VPS gần đây</CardTitle>
           <CardDescription>
-            Based on <code className="font-mono text-xs">/vps/sessions</code> and worker callbacks
+            Cập nhật theo thời gian thực từ hệ thống
           </CardDescription>
         </CardHeader>
         <CardContent>
           {recentActivity.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No sessions yet. Create one from the VPS page to see live provisioning data.
+              Chưa có phiên nào. Tạo một phiên trong trang VPS để xem quá trình khởi tạo trực tiếp.
             </p>
           ) : (
             <div className="space-y-4">
@@ -296,15 +296,15 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-semibold">{sessionTitle(session)}</p>
-                      <p className="text-xs text-muted-foreground">Session ID: {session.id}</p>
+                      <p className="text-xs text-muted-foreground">Mã phiên: {session.id}</p>
                     </div>
                     <span className="text-xs uppercase font-semibold text-muted-foreground">{session.status}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Updated {timeAgo(session.updated_at)}</span>
+                    <span>Cập nhật {timeAgo(session.updated_at)}</span>
                     {session.stream && (
                       <a className="text-primary hover:underline" href={session.stream} target="_blank" rel="noreferrer">
-                        Stream events -&gt;
+                        Xem luồng sự kiện →
                       </a>
                     )}
                   </div>
