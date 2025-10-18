@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchAdminUser,
+  fetchAdminSelf,
   fetchProfile,
   logout as apiLogout,
   clearAdminCsrfCache,
@@ -23,8 +23,6 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const useAdminQueryKey = (profile: UserProfile | null) => ["admin-user", profile?.id] as const;
-
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const queryClient = useQueryClient();
   const [adminRevoked, setAdminRevoked] = useState(false);
@@ -39,11 +37,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   });
 
   const profile = profileQuery.data ?? null;
-  const adminQueryKey = useMemo(() => useAdminQueryKey(profile), [profile?.id]);
+  const adminQueryKey = useMemo(() => ["admin-user"] as const, []);
 
   const adminQuery = useQuery({
     queryKey: adminQueryKey,
-    queryFn: () => fetchAdminUser(profile!.id),
+    queryFn: fetchAdminSelf,
     retry: false,
     enabled: isClient && !!profile,
     staleTime: 30_000,
@@ -51,10 +49,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const refresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["profile"] });
-    if (profile) {
-      queryClient.invalidateQueries({ queryKey: useAdminQueryKey(profile) });
-    }
-  }, [profile, queryClient]);
+    queryClient.invalidateQueries({ queryKey: adminQueryKey });
+  }, [adminQueryKey, queryClient]);
 
   const logout = useCallback(async () => {
     await apiLogout();

@@ -433,6 +433,10 @@ export const fetchAdminUser = async (id: string): Promise<AdminUser> => {
   return apiFetch<AdminUser>(`/api/v1/admin/users/${id}`);
 };
 
+export const fetchAdminSelf = async (): Promise<AdminUser> => {
+  return apiFetch<AdminUser>("/api/v1/admin/users/me");
+};
+
 export const createAdminUser = async (payload: {
   discord_id: string;
   username: string;

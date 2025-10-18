@@ -151,6 +151,14 @@ async def get_user(
     return user_service.get_user(db, user_id)
 
 
+@router.get("/users/me", response_model=AdminUser)
+async def get_current_admin_user(
+    actor: User = Depends(require_perm("user:read")),
+    db: Session = Depends(get_db),
+) -> AdminUser:
+    return user_service.get_user(db, actor.id)
+
+
 @router.patch("/users/{user_id}", response_model=AdminUser)
 async def update_user(
     request: Request,
