@@ -95,7 +95,8 @@ async def ensure_cors_headers(request: Request, call_next):
         response.headers.setdefault("Access-Control-Allow-Credentials", "true")
         _append_vary_header(response, "Origin")
     elif header_value == "*":
-        response.headers.pop("Access-Control-Allow-Credentials", None)
+        if "Access-Control-Allow-Credentials" in response.headers:
+            del response.headers["Access-Control-Allow-Credentials"]
 
     return response
 
