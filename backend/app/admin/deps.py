@@ -7,7 +7,7 @@ from typing import Callable, Deque, Dict, Set
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db
@@ -104,8 +104,9 @@ def require_admin_user(
     cache: PermissionCache = Depends(get_permission_cache),
     _: None = Depends(rate_limit_dependency),
 ) -> User:
-    if not db.in_transaction():
-        current_user = db.merge(current_user)
+    state = sa_inspect(current_user)
+    if state.detached or state.session is None:
+        current_user = db.merge(current_user, load=False)
     settings: AdminSettings = get_admin_settings()
     if not settings.enabled:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin module disabled.")
