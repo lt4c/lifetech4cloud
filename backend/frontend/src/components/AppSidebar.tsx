@@ -27,19 +27,19 @@ import {
 import { useAuth } from "@/context/AuthContext";
 
 const menuItems = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "VPS Management", url: "/vps", icon: Server },
-  { title: "Support", url: "/support", icon: MessageSquare },
+  { title: "Bảng điều khiển", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Quản lý VPS", url: "/vps", icon: Server },
+  { title: "Hỗ trợ", url: "/support", icon: MessageSquare },
 ];
 
 const adminItems = [
-  { title: "Announcements", url: "/admin/announcements", icon: Megaphone },
-  { title: "Users", url: "/admin/users", icon: Users },
-  { title: "Roles", url: "/admin/roles", icon: Shield },
-  { title: "VPS Products", url: "/admin/vps-products", icon: Package },
-  { title: "Workers", url: "/admin/workers", icon: Zap },
-  { title: "Analytics", url: "/admin/analytics", icon: TrendingUp },
-  { title: "Settings", url: "/admin/settings", icon: Settings },
+  { title: "Thông báo", url: "/admin/announcements", icon: Megaphone },
+  { title: "Người dùng", url: "/admin/users", icon: Users },
+  { title: "Vai trò & quyền", url: "/admin/roles", icon: Shield },
+  { title: "Gói VPS", url: "/admin/vps-products", icon: Package },
+  { title: "Worker", url: "/admin/workers", icon: Zap },
+  { title: "Phân tích", url: "/admin/analytics", icon: TrendingUp },
+  { title: "Cài đặt", url: "/admin/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -64,14 +64,14 @@ export function AppSidebar() {
             {!collapsed && (
               <div>
                 <h2 className="text-sm font-bold gradient-text">LifeTech4Code</h2>
-                <p className="text-xs text-muted-foreground">VPS Platform</p>
+                <p className="text-xs text-muted-foreground">Nền tảng VPS</p>
               </div>
             )}
           </div>
         </div>
 
         <SidebarGroup>
-          <SidebarGroupLabel>Main Menu</SidebarGroupLabel>
+          <SidebarGroupLabel>Menu chính</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
@@ -97,7 +97,7 @@ export function AppSidebar() {
 
         {hasAdminAccess && (
           <SidebarGroup>
-            <SidebarGroupLabel>Administration</SidebarGroupLabel>
+            <SidebarGroupLabel>Khu vực quản trị</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {adminItems.map((item) => (
@@ -128,7 +128,7 @@ export function AppSidebar() {
             onClick={handleLogout}
           >
             <LogOut className="w-4 h-4" />
-            {!collapsed && <span>Logout</span>}
+            {!collapsed && <span>Đăng xuất</span>}
           </SidebarMenuButton>
         </div>
       </SidebarContent>
