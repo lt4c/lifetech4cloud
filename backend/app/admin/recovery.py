@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
+from sqlalchemy.inspection import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from app.admin.admin_settings import get_admin_settings
@@ -205,7 +206,8 @@ class AdminRestoreRequest(BaseModel):
 
 
 def _ensure_has_admin_flag(db: Session, user: User) -> None:
-    if not hasattr(type(user), "has_admin"):
+    mapper = sa_inspect(type(user))
+    if "has_admin" not in mapper.columns:
         return
     if getattr(user, "has_admin", None):
         return
