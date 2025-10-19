@@ -17,7 +17,7 @@ from .admin import init_admin
 from .auth import DiscordOAuthClient
 from .deps import get_current_user, get_db
 from .models import Asset, User
-from .schemas import HealthStatus, UserProfile
+from .schemas import HealthStatus, UserProfile, UserProfileUpdate
 from .settings import get_settings
 
 
@@ -25,7 +25,6 @@ from app.admin.seed import grant_role_to_user
 from app.api import ads as ads_router
 from app.api import announcements as announcements_router
 from app.api import restore_admin as restore_admin_router
-from app.api import profile as profile_router
 from app.api import support as support_router
 from app.api import vps as vps_router
 from app.services.ads import AdsNonceManager
@@ -160,7 +159,6 @@ app.include_router(vps_router.router)
 app.include_router(ads_router.router)
 app.include_router(support_router.router)
 app.include_router(announcements_router.router)
-app.include_router(profile_router.router)
 
 
 @app.options("/{path:path}", include_in_schema=False)
@@ -294,11 +292,7 @@ async def discord_callback(
     return response
 
 
-@app.get("/me", response_model=UserProfile)
-async def read_me(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> UserProfile:
+def _build_user_profile(db: Session, current_user: User) -> UserProfile:
     role_names = db.scalars(
         select(Role.name)
         .join(UserRole, UserRole.role_id == Role.id)
@@ -327,12 +321,48 @@ async def read_me(
         username=current_user.username,
         display_name=current_user.display_name,
         avatar_url=current_user.avatar_url,
-        phone_number=None,
+        phone_number=current_user.phone_number,
         coins=current_user.coins or 0,
         roles=roles,
         is_admin=is_admin,
         has_admin=has_admin,
     )
+
+
+@app.get("/me", response_model=UserProfile)
+async def read_me(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserProfile:
+    return _build_user_profile(db, current_user)
+
+
+@app.patch("/me", response_model=UserProfile)
+async def update_me(
+    payload: UserProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserProfile:
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        return _build_user_profile(db, current_user)
+
+    changed = False
+    if "display_name" in data:
+        value = (data["display_name"] or "").strip()
+        current_user.display_name = value or None
+        changed = True
+    if "phone_number" in data:
+        value = (data["phone_number"] or "").strip()
+        current_user.phone_number = value or None
+        changed = True
+
+    if changed:
+        db.add(current_user)
+        db.commit()
+        db.refresh(current_user)
+
+    return _build_user_profile(db, current_user)
 
 
 @app.get("/assets/{code}", include_in_schema=False)

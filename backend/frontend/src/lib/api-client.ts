@@ -261,7 +261,7 @@ const apiFetch = async <T>(path: string, init?: RequestInit & { skipCsrf?: boole
 /* Profile */
 export const fetchProfile = async (): Promise<UserProfile | null> => {
   try {
-    return await apiFetch<UserProfile>("/profile");
+    return await apiFetch<UserProfile>("/me");
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) {
       return null;
@@ -272,7 +272,7 @@ export const fetchProfile = async (): Promise<UserProfile | null> => {
 
 export const updateProfile = async (payload: { display_name?: string | null; phone_number?: string | null }): Promise<UserProfile> => {
   const body = JSON.stringify(payload);
-  return apiFetch<UserProfile>("/profile", {
+  return apiFetch<UserProfile>("/me", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body,

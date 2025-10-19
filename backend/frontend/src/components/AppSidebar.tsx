@@ -2,7 +2,6 @@ import { useCallback } from "react";
 import {
   LayoutDashboard,
   Server,
-  UserCircle2,
   Users,
   Shield,
   Megaphone,
@@ -29,8 +28,6 @@ import { useAuth } from "@/context/AuthContext";
 
 const menuItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "My Profile", url: "/profile", icon: UserCircle2 },
-  { title: "Announcements", url: "/announcements", icon: Megaphone },
   { title: "VPS Management", url: "/vps", icon: Server },
   { title: "Support", url: "/support", icon: MessageSquare },
 ];

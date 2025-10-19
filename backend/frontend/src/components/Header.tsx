@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, Coins, User, LogOut } from "lucide-react";
+import { Bell, Coins, User, LogOut, Megaphone, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -114,7 +114,18 @@ export function Header() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => navigate("/support")}>Support</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/profile")}>
+                <User className="mr-2 h-4 w-4" />
+                My Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/announcements")}>
+                <Megaphone className="mr-2 h-4 w-4" />
+                Announcements
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/support")}>
+                <MessageSquare className="mr-2 h-4 w-4" />
+                Support
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive" onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
