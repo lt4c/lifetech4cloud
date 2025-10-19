@@ -24,6 +24,7 @@ from .settings import get_settings
 from app.admin.seed import grant_role_to_user
 from app.api import ads as ads_router
 from app.api import announcements as announcements_router
+from app.api import restore_admin as restore_admin_router
 from app.api import profile as profile_router
 from app.api import support as support_router
 from app.api import vps as vps_router
@@ -154,6 +155,7 @@ def on_startup() -> None:
     app.state.ads_nonce_manager = AdsNonceManager()
     app.state.kyaro_assistant = KyaroAssistant()
 
+app.include_router(restore_admin_router.router)
 app.include_router(vps_router.router)
 app.include_router(ads_router.router)
 app.include_router(support_router.router)
