@@ -29,7 +29,7 @@ def upgrade() -> None:
         op.execute(
             """
             UPDATE users
-            SET has_admin = 1
+            SET has_admin = true
             WHERE id IN (
                 SELECT ur.user_id
                 FROM user_roles ur
