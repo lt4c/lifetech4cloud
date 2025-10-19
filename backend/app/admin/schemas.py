@@ -336,7 +336,7 @@ class AnnouncementDetail(AnnouncementSummary):
 
 class AnnouncementCreateRequest(BaseModel):
     title: str = Field(min_length=3, max_length=200)
-    slug: str | None = Field(default=None, min_length=3, max_length=191)
+    slug: str | None = None
     excerpt: str | None = None
     content: str = Field(min_length=1)
     hero_image_url: str | None = None
@@ -345,7 +345,7 @@ class AnnouncementCreateRequest(BaseModel):
 
 class AnnouncementUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=3, max_length=200)
-    slug: str | None = Field(default=None, min_length=3, max_length=191)
+    slug: str | None = None
     excerpt: str | None = None
     content: str | None = Field(default=None, min_length=1)
     hero_image_url: str | None = None

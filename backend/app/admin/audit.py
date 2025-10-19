@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from datetime import datetime
+from decimal import Decimal
+from typing import Any, Mapping, Sequence
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -21,6 +23,18 @@ def diff_dict(before: Mapping[str, Any] | None, after: Mapping[str, Any] | None)
         return None
     before = before or {}
     after = after or {}
+
+    def _normalize(value: Any) -> Any:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, (UUID, Decimal)):
+            return str(value)
+        if isinstance(value, Mapping):
+            return {key: _normalize(val) for key, val in value.items()}
+        if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+            return [_normalize(item) for item in value]
+        return value
+
     changes: dict[str, Any] = {}
     all_keys = set(before) | set(after)
     for key in sorted(all_keys):
@@ -28,7 +42,7 @@ def diff_dict(before: Mapping[str, Any] | None, after: Mapping[str, Any] | None)
         after_value = after.get(key)
         if before_value == after_value:
             continue
-        changes[key] = {"before": before_value, "after": after_value}
+        changes[key] = {"before": _normalize(before_value), "after": _normalize(after_value)}
     return changes or None
 
 
