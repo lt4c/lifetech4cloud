@@ -9,6 +9,8 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
@@ -71,9 +73,7 @@ def _first_explicit_origin(origins: list[str]) -> str | None:
     return None
 
 
-@app.middleware("http")
-async def ensure_cors_headers(request: Request, call_next):
-    response = await call_next(request)
+def _apply_cors_headers(request: Request, response: Response) -> Response:
     allowed_origins = settings.allowed_origins_list
     if not allowed_origins:
         return response
@@ -101,6 +101,15 @@ async def ensure_cors_headers(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def ensure_cors_headers(request: Request, call_next):
+    try:
+        response = await call_next(request)
+    except Exception as exc:  # ensure CORS headers even on errors
+        response = await _handle_exception_with_cors(request, exc)
+    return _apply_cors_headers(request, response)
+
+
 def _preflight_headers(request: Request) -> tuple[dict[str, str], bool]:
     allowed_origins = settings.allowed_origins_list
     origin = request.headers.get("origin")
@@ -125,6 +134,23 @@ def _preflight_headers(request: Request) -> tuple[dict[str, str], bool]:
             headers["Access-Control-Allow-Credentials"] = "true"
             should_vary = True
     return headers, should_vary
+
+
+async def _handle_exception_with_cors(request: Request, exc: Exception) -> Response:
+    if isinstance(exc, HTTPException):
+        response = await http_exception_handler(request, exc)
+        return _apply_cors_headers(request, response)
+    if isinstance(exc, RequestValidationError):
+        response = await request_validation_exception_handler(request, exc)
+        return _apply_cors_headers(request, response)
+
+    logger.exception("Unhandled application error", exc_info=exc)
+    response = Response(
+        content='{"detail":"Internal Server Error"}',
+        media_type="application/json",
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
+    return _apply_cors_headers(request, response)
 
 
 oauth_client = DiscordOAuthClient(settings=settings)
@@ -363,6 +389,29 @@ async def update_me(
         db.refresh(current_user)
 
     return _build_user_profile(db, current_user)
+
+
+@app.exception_handler(HTTPException)
+async def _http_exception_handler(request: Request, exc: HTTPException) -> Response:
+    response = await http_exception_handler(request, exc)
+    return _apply_cors_headers(request, response)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(request: Request, exc: RequestValidationError) -> Response:
+    response = await request_validation_exception_handler(request, exc)
+    return _apply_cors_headers(request, response)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception) -> Response:
+    logger.exception("Unhandled application error", exc_info=exc)
+    response = Response(
+        content='{"detail":"Internal Server Error"}',
+        media_type="application/json",
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
+    return _apply_cors_headers(request, response)
 
 
 @app.get("/assets/{code}", include_in_schema=False)
