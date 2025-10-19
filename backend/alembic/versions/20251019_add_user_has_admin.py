@@ -8,7 +8,7 @@ from sqlalchemy import inspect, text
 
 # revision identifiers, used by Alembic.
 revision = "20251019_add_user_has_admin"
-down_revision = "20251018_add_assets_table"
+down_revision = "20251018_add_assets"
 branch_labels: tuple[str, ...] | None = None
 depends_on: tuple[str, ...] | None = None
 
