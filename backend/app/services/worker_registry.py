@@ -85,6 +85,7 @@ class WorkerRegistryService:
             base_url=normalized_url,
             status="active",
             max_sessions=max_sessions,
+            updated_at=datetime.now(timezone.utc),
         )
         self.db.add(worker)
         try:
