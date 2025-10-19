@@ -44,8 +44,10 @@ def enforce_signed_request(request: Request, csrf_token: str | None) -> None:
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid request timestamp.") from exc
     now_ms = int(time.time() * 1000)
-    # Reject replays older than 60 seconds
-    if abs(now_ms - timestamp_ms) > 60_000:
+    # allow modest client clock skew but reject old replays
+    if timestamp_ms - now_ms > 60_000:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Future request timestamp.")
+    if now_ms - timestamp_ms > 600_000:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Stale request timestamp.")
     expected = hashlib.sha256(f"{csrf_token}:{timestamp_header}".encode("utf-8")).hexdigest()
     if not hmac.compare_digest(signature_header, expected):
