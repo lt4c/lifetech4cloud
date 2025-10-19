@@ -87,24 +87,38 @@ class WorkerRegistryService:
             max_sessions=max_sessions,
         )
         self.db.add(worker)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception as exc:  # pragma: no cover - defensive
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Unable to store worker record: {exc}",
+            ) from exc
         self.db.refresh(worker)
         setattr(worker, "_active_sessions", 0)
 
-        record_audit(
-            self.db,
-            context=context,
-            action="worker.register",
-            target_type="worker",
-            target_id=str(worker.id),
-            before=None,
-            after={
-                "name": worker.name,
-                "base_url": worker.base_url,
-                "max_sessions": worker.max_sessions,
-            },
-        )
-        self.db.commit()
+        try:
+            record_audit(
+                self.db,
+                context=context,
+                action="worker.register",
+                target_type="worker",
+                target_id=str(worker.id),
+                before=None,
+                after={
+                    "name": worker.name,
+                    "base_url": worker.base_url,
+                    "max_sessions": worker.max_sessions,
+                },
+            )
+            self.db.commit()
+        except Exception as exc:  # pragma: no cover - defensive
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Unable to record audit entry: {exc}",
+            ) from exc
         return worker
 
     def update_worker(
