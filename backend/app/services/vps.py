@@ -48,7 +48,16 @@ class VpsService:
             .where(VpsSession.user_id == user.id)
             .order_by(VpsSession.created_at.desc())
         )
-        return list(self.db.scalars(stmt))
+        sessions = list(self.db.scalars(stmt))
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+        filtered: List[VpsSession] = []
+        for session in sessions:
+            if session.status == "deleted":
+                reference_ts = session.updated_at or session.created_at
+                if reference_ts and reference_ts < cutoff:
+                    continue
+            filtered.append(session)
+        return filtered
 
     def _initial_session(
         self,

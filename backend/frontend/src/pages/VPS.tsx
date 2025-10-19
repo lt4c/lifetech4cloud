@@ -1,18 +1,11 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Server, Plus, Power, RefreshCw, Loader2, ExternalLink, Terminal, StopCircle } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   fetchVpsProducts,
@@ -28,6 +21,11 @@ import { toast } from "@/components/ui/sonner";
 type VmVariant = "linux" | "windows";
 
 const VM_VARIANTS: VmVariant[] = ["linux", "windows"];
+
+const VARIANT_ACTIONS: Record<VmVariant, number> = {
+  linux: 1,
+  windows: 2,
+};
 
 const VARIANT_LABELS: Record<VmVariant, string> = {
   linux: "Linux",
@@ -147,6 +145,8 @@ const useSessionLog = (session: VpsSession) => {
 
 export default function VPS() {
   const queryClient = useQueryClient();
+  const [launcherOpen, setLauncherOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<VpsProduct | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<VmVariant | null>(null);
 
   const {
@@ -168,20 +168,38 @@ export default function VPS() {
     staleTime: 10_000,
   });
 
-  const variantProducts = useMemo(() => {
-    const mapping: Record<VmVariant, VpsProduct | null> = {
-      linux: null,
-      windows: null,
-    };
-    for (const product of products) {
-      const action = normalizeAction(product.provision_action);
-      const variant = actionToVariant(action);
-      if (variant && !mapping[variant]) {
-        mapping[variant] = product;
-      }
+  const resetLauncherState = () => {
+    setSelectedProduct(null);
+    setSelectedVariant(null);
+  };
+
+  useEffect(() => {
+    if (!selectedProduct) {
+      setSelectedVariant(null);
+      return;
     }
-    return mapping;
-  }, [products]);
+    const defaultVariant = actionToVariant(normalizeAction(selectedProduct.provision_action));
+    setSelectedVariant(defaultVariant);
+  }, [selectedProduct]);
+
+  const visibleSessions = useMemo(() => {
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    return sessions.filter((session) => {
+      if (session.status !== "deleted") {
+        return true;
+      }
+      const reference = session.updated_at ?? session.created_at;
+      if (!reference) {
+        return false;
+      }
+      const timestamp = new Date(reference).getTime();
+      if (Number.isNaN(timestamp)) {
+        return false;
+      }
+      return now - timestamp < sevenDaysMs;
+    });
+  }, [sessions]);
 
   const sortedSessions = useMemo(() => {
     const priority = (status: string) => {
@@ -201,25 +219,27 @@ export default function VPS() {
           return 5;
       }
     };
-    return [...sessions].sort((a, b) => {
+    return [...visibleSessions].sort((a, b) => {
       const diff = priority(a.status) - priority(b.status);
       if (diff !== 0) return diff;
       const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
       const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
       return bTime - aTime;
     });
-  }, [sessions]);
+  }, [visibleSessions]);
 
   const createSession = useMutation({
     mutationFn: ({ variant, productId }: { variant: VmVariant; productId: string }) =>
       createVpsSession({
         productId,
         vmType: variant,
+        workerAction: VARIANT_ACTIONS[variant],
         idempotencyKey: idempotencyKey(),
       }),
     onSuccess: (session) => {
       toast("Provisioning request sent to worker.");
-      setSelectedVariant(null);
+      resetLauncherState();
+      setLauncherOpen(false);
       refetchSessions();
       queryClient.invalidateQueries({ queryKey: ["vps-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["vps-session-log", session.id] });
@@ -255,13 +275,15 @@ export default function VPS() {
   });
 
   const handleLaunch = () => {
-    if (!selectedVariant) return;
-    const product = variantProducts[selectedVariant];
-    if (!product) {
-      toast("No product configured for this variant.");
+    if (!selectedProduct) {
+      toast("Select a VPS package before launching.");
       return;
     }
-    createSession.mutate({ variant: selectedVariant, productId: product.id });
+    if (!selectedVariant) {
+      toast("Choose an operating system to continue.");
+      return;
+    }
+    createSession.mutate({ variant: selectedVariant, productId: selectedProduct.id });
   };
 
   return (
@@ -273,80 +295,141 @@ export default function VPS() {
             Launch, monitor, and stop worker-provisioned VPS sessions from a single panel.
           </p>
         </div>
-        <Dialog onOpenChange={(open) => { if (!open) setSelectedVariant(null); }}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="w-4 h-4" />
-              Launch VPS
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="glass-panel max-w-3xl">
+        <Button className="gap-2" onClick={() => setLauncherOpen(true)}>
+          <Plus className="w-4 h-4" />
+          Launch VPS
+        </Button>
+        <Dialog
+          open={launcherOpen}
+          onOpenChange={(open) => {
+            setLauncherOpen(open);
+            if (!open) {
+              resetLauncherState();
+            }
+          }}
+        >
+          <DialogContent className="glass-panel max-w-4xl">
             <DialogHeader>
-              <DialogTitle>Select operating system</DialogTitle>
-              <DialogDescription>Choose which worker action to trigger for the new VPS session.</DialogDescription>
+              <DialogTitle>Select VPS package</DialogTitle>
+              <DialogDescription>Pick a machine configuration, then choose an operating system to launch.</DialogDescription>
             </DialogHeader>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              {productsLoading && (
-                <p className="col-span-2 px-2 text-sm text-muted-foreground">Loading productsâ€¦</p>
-              )}
-              {!productsLoading &&
-                VM_VARIANTS.map((variant) => {
-                  const product = variantProducts[variant];
-                  const isSelected = selectedVariant === variant;
-                  const isDisabled = !product;
-                  return (
-                    <Card
-                      key={variant}
-                      role="button"
-                      tabIndex={isDisabled ? -1 : 0}
-                      className={`glass-card transition-all ${
-                        isSelected ? "ring-2 ring-primary" : ""
-                      } ${isDisabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                      onClick={() => {
-                        if (isDisabled) return;
-                        setSelectedVariant(variant);
-                      }}
-                    >
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                          <Server className="w-4 h-4" />
-                          {VARIANT_LABELS[variant]}
-                        </CardTitle>
-                        <CardDescription className="text-xs">{VARIANT_DESCRIPTIONS[variant]}</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        {product ? (
-                          <div className="text-2xl font-semibold">
-                            {product.price_coins.toLocaleString()}{" "}
-                            <span className="text-sm text-muted-foreground">coins</span>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No product configured.</p>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+            <div className="space-y-6">
+              <div>
+                <p className="text-sm font-semibold mb-2">Available packages</p>
+                {productsLoading && <p className="text-sm text-muted-foreground px-1">Loading packages…</p>}
+                {!productsLoading && products.length === 0 && (
+                  <p className="text-sm text-muted-foreground px-1">No VPS packages are available right now.</p>
+                )}
+                {!productsLoading && products.length > 0 && (
+                  <div className="grid gap-4 md:grid-cols-3">
+                    {products.map((product) => {
+                      const isActive = selectedProduct?.id === product.id;
+                      return (
+                        <Card
+                          key={product.id}
+                          role="button"
+                          tabIndex={0}
+                          className={`glass-card transition-all ${isActive ? "ring-2 ring-primary" : "hover:ring-1 hover:ring-primary/70"}`}
+                          onClick={() => setSelectedProduct(product)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setSelectedProduct(product);
+                            }
+                          }}
+                        >
+                          <CardHeader>
+                            <CardTitle className="text-lg">{product.name}</CardTitle>
+                            <CardDescription className="text-xs line-clamp-3">
+                              {product.description || "Managed worker capacity."}
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-2xl font-semibold">
+                              {product.price_coins.toLocaleString()}{" "}
+                              <span className="text-sm text-muted-foreground">coins</span>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div>
+                <p className="text-sm font-semibold mb-2">Operating system</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedProduct
+                    ? "Select the worker action to run on this package."
+                    : "Choose a package above to unlock operating system selection."}
+                </p>
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  {VM_VARIANTS.map((variant) => {
+                    const isSelected = selectedVariant === variant;
+                    const disabled = !selectedProduct;
+                    const defaultVariant =
+                      selectedProduct && actionToVariant(normalizeAction(selectedProduct.provision_action));
+                    return (
+                      <Card
+                        key={variant}
+                        role="button"
+                        tabIndex={disabled ? -1 : 0}
+                        className={`glass-card transition-all ${isSelected ? "ring-2 ring-primary" : ""} ${
+                          disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:ring-1 hover:ring-primary/70"
+                        }`}
+                        onClick={() => {
+                          if (disabled) return;
+                          setSelectedVariant(variant);
+                        }}
+                        onKeyDown={(event) => {
+                          if (disabled) return;
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedVariant(variant);
+                          }
+                        }}
+                      >
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <Server className="w-4 h-4" />
+                            {VARIANT_LABELS[variant]}
+                          </CardTitle>
+                          <CardDescription className="text-xs">{VARIANT_DESCRIPTIONS[variant]}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="text-xs text-muted-foreground space-y-1">
+                          <div>Worker action #{VARIANT_ACTIONS[variant]}</div>
+                          {defaultVariant === variant && (
+                            <div className="font-medium text-primary">Default for this package</div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setSelectedVariant(null)}>
+            <DialogFooter className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  resetLauncherState();
+                  setLauncherOpen(false);
+                }}
+              >
                 Cancel
               </Button>
-              <Button
-                onClick={handleLaunch}
-                disabled={!selectedVariant || !variantProducts[selectedVariant] || createSession.isPending}
-                className="gap-2"
-              >
+              <Button onClick={handleLaunch} disabled={!selectedProduct || !selectedVariant || createSession.isPending} className="gap-2">
                 {createSession.isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Provisioningâ€¦
+                    Provisioning…
                   </>
                 ) : (
                   "Launch"
                 )}
               </Button>
-            </div>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
@@ -557,4 +640,3 @@ const SessionLogPanel = ({ session, query }: SessionLogPanelProps) => {
     </div>
   );
 };
-
