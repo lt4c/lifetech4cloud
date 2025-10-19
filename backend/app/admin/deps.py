@@ -126,6 +126,9 @@ def require_perm(code: str) -> Callable[[User], User]:
         cache: PermissionCache = Depends(get_permission_cache),
         _: None = Depends(rate_limit_dependency),
     ) -> User:
+        state = sa_inspect(current_user)
+        if state.detached or state.session is None:
+            current_user = db.merge(current_user, load=False)
         settings: AdminSettings = get_admin_settings()
         if not settings.enabled:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin module disabled.")
