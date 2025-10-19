@@ -70,7 +70,15 @@ class WorkerRegistryService:
             )
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Worker health check failed: {exc}") from exc
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Worker health check failed: {exc}",
+            ) from exc
+        except Exception as exc:  # pragma: no cover - defensive
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Could not reach worker at {normalized_url}: {exc}",
+            ) from exc
 
         worker = Worker(
             name=name,
