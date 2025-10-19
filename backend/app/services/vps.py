@@ -162,7 +162,10 @@ class VpsService:
                         "data": {"status": session.status},
                     },
                 )
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Worker unreachable") from exc
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Worker unreachable: {exc}",
+            ) from exc
 
         session.worker_route = route
         session.log_url = log_url
