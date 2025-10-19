@@ -41,11 +41,6 @@ def _validated_secret(request: Request) -> str:
     return token
 
 
-@router.get("/restore-admin", include_in_schema=False, response_class=HTMLResponse)
-async def render_restore_admin_form() -> HTMLResponse:
-    return HTMLResponse(content=RESTORE_ADMIN_FORM_HTML)
-
-
 async def _read_secure_payload(request: Request) -> dict[str, Any]:
     content_type = (request.headers.get("content-type") or "").lower()
     encryption = (request.headers.get("X-Payload-Encrypted") or "").lower()
