@@ -22,6 +22,7 @@ import AdminAnnouncements from "@/pages/admin/Announcements";
 import Analytics from "@/pages/admin/Analytics";
 import Settings from "@/pages/admin/Settings";
 import NotFound from "@/pages/NotFound";
+import { OrbitProgress } from "react-loading-indicators";
 
 const queryClient = new QueryClient();
 
