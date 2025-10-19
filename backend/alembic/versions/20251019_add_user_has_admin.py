@@ -24,7 +24,7 @@ def upgrade() -> None:
     if not _has_column(inspector, "users", "has_admin"):
         op.add_column(
             "users",
-            sa.Column("has_admin", sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column("has_admin", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         )
         op.execute(
             """
