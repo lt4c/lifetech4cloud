@@ -33,8 +33,8 @@ const VARIANT_LABELS: Record<VmVariant, string> = {
 };
 
 const VARIANT_DESCRIPTIONS: Record<VmVariant, string> = {
-  linux: "Headless Ubuntu environment provisioned through worker action 1.",
-  windows: "Windows 10 environment provisioned through worker action 2.",
+  linux: "Môi trường Ubuntu tối giản, phù hợp tác vụ nền và máy chủ.",
+  windows: "Môi trường Windows 10 có giao diện, tiện điều khiển từ xa.",
 };
 
 const idempotencyKey = () => {
@@ -86,9 +86,9 @@ const workerActionLabel = (session: VpsSession): string => {
     normalizeAction(session.provision_action) ??
     normalizeAction(session.product?.provision_action);
   if (fallback === 3) {
-    return "Dummy";
+    return "Mô phỏng";
   }
-  return "Unknown";
+  return "Không xác định";
 };
 
 const statusBadge = (status: string) => {
@@ -105,6 +105,25 @@ const statusBadge = (status: string) => {
       return { variant: "secondary" as const, className: "bg-muted text-muted-foreground" };
     default:
       return { variant: "secondary" as const, className: "" };
+  }
+};
+
+const statusLabel = (status: string) => {
+  switch (status) {
+    case "ready":
+      return "Sẵn sàng";
+    case "failed":
+      return "Lỗi";
+    case "provisioning":
+      return "Đang khởi tạo";
+    case "pending":
+      return "Đang xử lý";
+    case "deleted":
+      return "Đã xóa";
+    case "expired":
+      return "Hết hạn";
+    default:
+      return status;
   }
 };
 
@@ -237,7 +256,7 @@ export default function VPS() {
         idempotencyKey: idempotencyKey(),
       }),
     onSuccess: (session) => {
-      toast("Provisioning request sent to worker.");
+      toast("Đã gửi yêu cầu khởi tạo.");
       resetLauncherState();
       setLauncherOpen(false);
       refetchSessions();
@@ -246,11 +265,11 @@ export default function VPS() {
     },
     onError: (error: unknown) => {
       if (error instanceof ApiError && error.status === 400) {
-        const detail = (error.data as { detail?: string })?.detail ?? "Provisioning failed.";
+        const detail = (error.data as { detail?: string })?.detail ?? "Khởi tạo thất bại.";
         toast(detail);
         return;
       }
-      const message = error instanceof Error ? error.message : "Unable to provision VPS.";
+      const message = error instanceof Error ? error.message : "Không thể khởi tạo VPS.";
       toast(message);
     },
   });
@@ -258,7 +277,7 @@ export default function VPS() {
   const stopSession = useMutation({
     mutationFn: stopVpsSession,
     onSuccess: (session) => {
-      toast("Stop command sent to worker.");
+      toast("Đã gửi lệnh dừng.");
       refetchSessions();
       queryClient.invalidateQueries({ queryKey: ["vps-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["vps-session-log", session.id] });
@@ -269,18 +288,18 @@ export default function VPS() {
           ? error.message
           : error instanceof Error
             ? error.message
-            : "Unable to stop session.";
+            : "Không thể dừng phiên.";
       toast(message);
     },
   });
 
   const handleLaunch = () => {
     if (!selectedProduct) {
-      toast("Select a VPS package before launching.");
+      toast("Hãy chọn gói VPS trước khi khởi chạy.");
       return;
     }
     if (!selectedVariant) {
-      toast("Choose an operating system to continue.");
+      toast("Hãy chọn hệ điều hành để tiếp tục.");
       return;
     }
     createSession.mutate({ variant: selectedVariant, productId: selectedProduct.id });
@@ -290,14 +309,14 @@ export default function VPS() {
     <div className="space-y-8">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold mb-2">VPS Control</h1>
+          <h1 className="text-3xl font-bold mb-2">Điều khiển VPS</h1>
           <p className="text-muted-foreground">
-            Launch, monitor, and stop worker-provisioned VPS sessions from a single panel.
+            Khởi chạy, theo dõi và dừng các phiên VPS ở một nơi.
           </p>
         </div>
         <Button className="gap-2" onClick={() => setLauncherOpen(true)}>
           <Plus className="w-4 h-4" />
-          Launch VPS
+          Tạo VPS
         </Button>
         <Dialog
           open={launcherOpen}
@@ -310,15 +329,15 @@ export default function VPS() {
         >
           <DialogContent className="glass-panel max-w-4xl">
             <DialogHeader>
-              <DialogTitle>Select VPS package</DialogTitle>
-              <DialogDescription>Pick a machine configuration, then choose an operating system to launch.</DialogDescription>
+              <DialogTitle>Chọn gói VPS</DialogTitle>
+              <DialogDescription>Chọn cấu hình máy và hệ điều hành để bắt đầu.</DialogDescription>
             </DialogHeader>
             <div className="space-y-6">
               <div>
-                <p className="text-sm font-semibold mb-2">Available packages</p>
-                {productsLoading && <p className="text-sm text-muted-foreground px-1">Loading packages�</p>}
+                <p className="text-sm font-semibold mb-2">Gói khả dụng</p>
+                {productsLoading && <p className="text-sm text-muted-foreground px-1">Đang tải gói…</p>}
                 {!productsLoading && products.length === 0 && (
-                  <p className="text-sm text-muted-foreground px-1">No VPS packages are available right now.</p>
+                  <p className="text-sm text-muted-foreground px-1">Hiện chưa có gói khả dụng.</p>
                 )}
                 {!productsLoading && products.length > 0 && (
                   <div className="grid gap-4 md:grid-cols-3">
@@ -341,13 +360,13 @@ export default function VPS() {
                           <CardHeader>
                             <CardTitle className="text-lg">{product.name}</CardTitle>
                             <CardDescription className="text-xs line-clamp-3">
-                              {product.description || "Managed worker capacity."}
+                              {product.description || "Tài nguyên VPS được quản lý."}
                             </CardDescription>
                           </CardHeader>
                           <CardContent>
                             <div className="text-2xl font-semibold">
                               {product.price_coins.toLocaleString()}{" "}
-                              <span className="text-sm text-muted-foreground">coins</span>
+                              <span className="text-sm text-muted-foreground">coin</span>
                             </div>
                           </CardContent>
                         </Card>
@@ -357,11 +376,11 @@ export default function VPS() {
                 )}
               </div>
               <div>
-                <p className="text-sm font-semibold mb-2">Operating system</p>
+                <p className="text-sm font-semibold mb-2">Hệ điều hành</p>
                 <p className="text-xs text-muted-foreground">
                   {selectedProduct
-                    ? "Select the worker action to run on this package."
-                    : "Choose a package above to unlock operating system selection."}
+                    ? "Chọn hệ điều hành bạn muốn dùng cho gói này."
+                    : "Chọn gói ở trên để mở tùy chọn hệ điều hành."}
                 </p>
                 <div className="mt-3 grid gap-4 md:grid-cols-2">
                   {VM_VARIANTS.map((variant) => {
@@ -397,9 +416,8 @@ export default function VPS() {
                           <CardDescription className="text-xs">{VARIANT_DESCRIPTIONS[variant]}</CardDescription>
                         </CardHeader>
                         <CardContent className="text-xs text-muted-foreground space-y-1">
-                          <div>Worker action #{VARIANT_ACTIONS[variant]}</div>
                           {defaultVariant === variant && (
-                            <div className="font-medium text-primary">Default for this package</div>
+                            <div className="font-medium text-primary">Mặc định cho gói này</div>
                           )}
                         </CardContent>
                       </Card>
@@ -417,16 +435,16 @@ export default function VPS() {
                   setLauncherOpen(false);
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button onClick={handleLaunch} disabled={!selectedProduct || !selectedVariant || createSession.isPending} className="gap-2">
                 {createSession.isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Provisioning�
+                    Đang khởi tạo…
                   </>
                 ) : (
-                  "Launch"
+                  "Khởi chạy"
                 )}
               </Button>
             </DialogFooter>
@@ -438,7 +456,7 @@ export default function VPS() {
         <Card className="glass-card">
           <CardContent className="flex items-center gap-2 py-10">
             <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Loading sessions…</span>
+            <span className="text-sm text-muted-foreground">Đang tải danh sách phiên…</span>
           </CardContent>
         </Card>
       )}
@@ -446,7 +464,7 @@ export default function VPS() {
       {!sessionsLoading && sortedSessions.length === 0 && (
         <Card className="glass-card">
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No VPS sessions yet. Launch one to see worker activity.
+            Chưa có phiên VPS nào. Hãy khởi chạy để xem hoạt động.
           </CardContent>
         </Card>
       )}
@@ -489,12 +507,12 @@ const SessionCard = ({ session, onStop, isStopping }: SessionCardProps) => {
               {variantLabel}
             </CardTitle>
             <CardDescription className="text-xs">
-              Session {session.id}
+              Phiên {session.id}
               {session.product?.name ? ` · ${session.product.name}` : ""}
             </CardDescription>
           </div>
           <Badge variant={status.variant} className={status.className}>
-            {session.status.toUpperCase()}
+            {statusLabel(session.status)}
           </Badge>
         </div>
       </CardHeader>
@@ -502,10 +520,10 @@ const SessionCard = ({ session, onStop, isStopping }: SessionCardProps) => {
         <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
           <div className="space-y-4 text-sm">
             <div className="space-y-2">
-              <InfoRow label="Worker route" value={session.worker_route ?? "--"} />
-              <InfoRow label="Created" value={formatDateTime(session.created_at)} />
-              <InfoRow label="Updated" value={formatDateTime(session.updated_at)} />
-              <InfoRow label="Log endpoint" value={session.log_url ?? "Not assigned"} />
+              <InfoRow label="Máy chủ thực thi" value={session.worker_route ?? "--"} />
+              <InfoRow label="Tạo lúc" value={formatDateTime(session.created_at)} />
+              <InfoRow label="Cập nhật" value={formatDateTime(session.updated_at)} />
+              <InfoRow label="Nhật ký" value={session.log_url ? "Có sẵn" : "Chưa khả dụng"} />
             </div>
             {session.status === "ready" && session.rdp && <ConnectionDetails session={session} />}
             <div className="flex flex-wrap gap-2">
@@ -517,13 +535,13 @@ const SessionCard = ({ session, onStop, isStopping }: SessionCardProps) => {
                 disabled={!canStop || isStopping}
               >
                 {isStopping ? <Loader2 className="w-4 h-4 animate-spin" /> : <StopCircle className="w-4 h-4" />}
-                {isStopping ? "Stopping…" : "Stop session"}
+                {isStopping ? "Đang dừng…" : "Dừng phiên"}
               </Button>
               {session.log_url && (
                 <Button variant="outline" size="sm" className="gap-2" asChild>
                   <a href={session.log_url} target="_blank" rel="noreferrer">
                     <ExternalLink className="w-4 h-4" />
-                    Open worker log
+                    Mở nhật ký
                   </a>
                 </Button>
               )}
@@ -554,25 +572,25 @@ const ConnectionDetails = ({ session }: { session: VpsSession }) => {
 
   return (
     <div className="space-y-1 rounded-lg border border-border/40 bg-muted/30 p-3 text-xs">
-      <p className="text-sm font-semibold">RDP credentials</p>
+      <p className="text-sm font-semibold">Thông tin kết nối RDP</p>
       {host && (
         <div>
-          Host: <span className="font-mono">{host}</span>
+          Máy chủ: <span className="font-mono">{host}</span>
         </div>
       )}
       {port && (
         <div>
-          Port: <span className="font-mono">{port}</span>
+          Cổng: <span className="font-mono">{port}</span>
         </div>
       )}
       {user && (
         <div>
-          User: <span className="font-mono">{user}</span>
+          Tài khoản: <span className="font-mono">{user}</span>
         </div>
       )}
       {password && (
         <div>
-          Password: <span className="font-mono">{password}</span>
+          Mật khẩu: <span className="font-mono">{password}</span>
         </div>
       )}
     </div>
@@ -590,12 +608,12 @@ const SessionLogPanel = ({ session, query }: SessionLogPanelProps) => {
   let content: ReactNode;
 
   if (!hasLog) {
-    content = <p className="text-xs text-muted-foreground">Worker has not exposed a log yet.</p>;
+    content = <p className="text-xs text-muted-foreground">Nhật ký chưa sẵn sàng.</p>;
   } else if (query.isLoading) {
     content = (
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Loader2 className="w-4 h-4 animate-spin" />
-        Fetching log…
+        Đang tải nhật ký…
       </div>
     );
   } else if (query.isError) {
@@ -604,12 +622,12 @@ const SessionLogPanel = ({ session, query }: SessionLogPanelProps) => {
         ? query.error.message
         : query.error instanceof Error
           ? query.error.message
-          : "Unable to load log.";
+          : "Không thể tải nhật ký.";
     content = <p className="text-xs text-destructive">{message}</p>;
   } else {
     const text = query.data ?? "";
     content = (
-      <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">{text || "(empty log)"}</pre>
+      <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">{text || "(nhật ký trống)"}</pre>
     );
   }
 
@@ -618,7 +636,7 @@ const SessionLogPanel = ({ session, query }: SessionLogPanelProps) => {
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-2 text-sm font-semibold">
           <Terminal className="w-4 h-4" />
-          Worker log
+          Nhật ký hoạt động
         </p>
         <Button
           variant="ghost"
@@ -628,14 +646,14 @@ const SessionLogPanel = ({ session, query }: SessionLogPanelProps) => {
           disabled={!hasLog || query.isFetching}
         >
           {query.isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          Refresh
+          Làm mới
         </Button>
       </div>
       <ScrollArea className="h-[260px] rounded-md border border-border/40 bg-muted/20">
         <div className="p-4">{content}</div>
       </ScrollArea>
       <p className="text-[10px] text-muted-foreground">
-        {autoRefresh ? `Auto refresh every ${Math.round(autoRefresh / 1000)}s.` : "Auto refresh disabled."}
+        {autoRefresh ? `Tự động làm mới mỗi ${Math.round(autoRefresh / 1000)}s.` : "Đã tắt tự động làm mới."}
       </p>
     </div>
   );
