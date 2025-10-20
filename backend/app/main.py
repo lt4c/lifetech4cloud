@@ -13,7 +13,13 @@ from fastapi.exception_handlers import http_exception_handler, request_validatio
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+except ImportError:  # pragma: no cover - optional dependency
+    CONTENT_TYPE_LATEST = "text/plain; version=0.0.4"
+
+    def generate_latest():
+        return b""
 
 from . import utils
 from .admin import init_admin

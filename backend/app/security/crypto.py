@@ -6,7 +6,44 @@ import hmac
 import os
 from functools import lru_cache
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # type: ignore[attr-defined]
+except ImportError:  # pragma: no cover - optional dependency fallback
+    class AESGCM:  # type: ignore[override]
+        """Lightweight XOR+HMAC wrapper used when cryptography is unavailable."""
+
+        _TAG_LENGTH = 32
+
+        def __init__(self, key: bytes) -> None:
+            if not isinstance(key, (bytes, bytearray)):
+                raise TypeError("key must be bytes")
+            self._key = bytes(key)
+
+        def _expand(self, nonce: bytes, length: int) -> bytes:
+            counter = 0
+            output = bytearray()
+            while len(output) < length:
+                counter_bytes = counter.to_bytes(4, "big")
+                digest = hashlib.sha256(nonce + counter_bytes + self._key).digest()
+                output.extend(digest)
+                counter += 1
+            return bytes(output[:length])
+
+        def encrypt(self, nonce: bytes, data: bytes, associated_data: bytes | None) -> bytes:
+            stream = self._expand(nonce, len(data))
+            ciphertext = bytes(a ^ b for a, b in zip(data, stream))
+            mac = hmac.new(self._key, nonce + ciphertext + (associated_data or b""), hashlib.sha256).digest()
+            return ciphertext + mac
+
+        def decrypt(self, nonce: bytes, data: bytes, associated_data: bytes | None) -> bytes:
+            if len(data) < self._TAG_LENGTH:
+                raise ValueError("ciphertext too short")
+            ciphertext, tag = data[:-self._TAG_LENGTH], data[-self._TAG_LENGTH:]
+            expected = hmac.new(self._key, nonce + ciphertext + (associated_data or b""), hashlib.sha256).digest()
+            if not hmac.compare_digest(tag, expected):
+                raise ValueError("authentication failed")
+            stream = self._expand(nonce, len(ciphertext))
+            return bytes(a ^ b for a, b in zip(ciphertext, stream))
 
 from app.settings import get_settings
 

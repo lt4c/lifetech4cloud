@@ -6,7 +6,7 @@ import secrets
 from hashlib import sha256
 from typing import Any
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from app.security.crypto import AESGCM
 
 
 def _derive_key(secret: str) -> bytes:

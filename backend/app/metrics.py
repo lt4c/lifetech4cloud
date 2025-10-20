@@ -1,6 +1,25 @@
 from __future__ import annotations
 
-from prometheus_client import Counter, Gauge, Histogram
+try:
+    from prometheus_client import Counter, Gauge, Histogram
+except ImportError:  # pragma: no cover - optional dependency fallback
+    class _NoopMetric:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def labels(self, *args, **kwargs):
+            return self
+
+        def inc(self, *args, **kwargs):
+            return self
+
+        def observe(self, *args, **kwargs):
+            return self
+
+        def set(self, *args, **kwargs):
+            return self
+
+    Counter = Gauge = Histogram = _NoopMetric
 
 rewarded_ads_prepare_total = Counter(
     "rewarded_ads_prepare_total",

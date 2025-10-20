@@ -38,11 +38,14 @@ class WalletService:
     ) -> WalletBalance:
         wallet = self._get_wallet(user.id, lock=True)
         if wallet is None:
-            wallet = Wallet(user_id=user.id, balance=0)
+            seed_balance = int(user.coins or 0)
+            wallet = Wallet(user_id=user.id, balance=seed_balance)
             self.db.add(wallet)
             self.db.flush()
+        else:
+            seed_balance = int(wallet.balance or 0)
 
-        new_balance = int(wallet.balance or 0) + int(amount)
+        new_balance = seed_balance + int(amount)
         if new_balance < 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -64,6 +67,7 @@ class WalletService:
             meta=meta or {},
         )
         self.db.add(ledger_entry)
+        self.db.flush()
 
         return WalletBalance(user_id=user.id, balance=new_balance)
 

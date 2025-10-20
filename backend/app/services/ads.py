@@ -36,9 +36,12 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     Redis = None
 
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.primitives.serialization import load_pem_public_key
+try:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+except ImportError:  # pragma: no cover - optional dependency
+    hashes = padding = load_pem_public_key = None
 
 logger = logging.getLogger(__name__)
 
@@ -149,13 +152,16 @@ class SSVSignatureVerifier:
         self._public_key = None
         public_key_path = (settings.ssv_public_key_path or "").strip()
         if public_key_path:
-            try:
-                with open(public_key_path, "rb") as handle:
-                    self._public_key = load_pem_public_key(handle.read())
-            except FileNotFoundError:
-                logger.error("Public key path configured but file not found: %s", public_key_path)
-            except Exception:  # pragma: no cover - defensive
-                logger.exception("Failed to load SSV public key")
+            if load_pem_public_key is None:
+                logger.error("cryptography package missing; cannot load SSV public key %s", public_key_path)
+            else:
+                try:
+                    with open(public_key_path, "rb") as handle:
+                        self._public_key = load_pem_public_key(handle.read())
+                except FileNotFoundError:
+                    logger.error("Public key path configured but file not found: %s", public_key_path)
+                except Exception:  # pragma: no cover - defensive
+                    logger.exception("Failed to load SSV public key")
 
         if not self._secret and not self._public_key:
             logger.warning("No SSV secret or public key configured; SSV verification will fail.")
