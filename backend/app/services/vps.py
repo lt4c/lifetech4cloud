@@ -125,8 +125,9 @@ class VpsService:
             idempotency_key=key,
         )
 
+        transaction_ctx = self.db.begin_nested() if self.db.in_transaction() else self.db.begin()
         try:
-            with self.db.begin():
+            with transaction_ctx:
                 self.db.add(session)
                 self.db.flush()
                 wallet_service.adjust_balance(
@@ -169,7 +170,8 @@ class VpsService:
             # bubble HTTP errors directly to client
             raise
         except Exception as exc:  # pragma: no cover - defensive
-            with self.db.begin():
+            transaction_ctx = self.db.begin_nested() if self.db.in_transaction() else self.db.begin()
+            with transaction_ctx:
                 session.status = "failed"
                 session.updated_at = datetime.now(timezone.utc)
                 wallet_service.adjust_balance(
@@ -206,7 +208,8 @@ class VpsService:
             }
         ]
         session.updated_at = datetime.now(timezone.utc)
-        with self.db.begin():
+        transaction_ctx = self.db.begin_nested() if self.db.in_transaction() else self.db.begin()
+        with transaction_ctx:
             self.db.add(session)
 
         if self.event_bus:
