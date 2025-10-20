@@ -21,6 +21,10 @@ import type {
   WorkerDetail,
   WorkerHealthStatus,
   WorkerInfo,
+  RewardPolicy,
+  PrepareAdResponse,
+  WalletBalance,
+  RewardMetricsSummary,
 } from "./types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
@@ -258,6 +262,20 @@ const apiFetch = async <T>(path: string, init?: RequestInit & { skipCsrf?: boole
   return data as T;
 };
 
+const apiFetchRaw = async (path: string, init?: RequestInit): Promise<string> => {
+  const url = buildUrl(path);
+  const response = await fetch(url, {
+    ...init,
+    credentials: "include",
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    const message = text || response.statusText || "Request failed";
+    throw new ApiError(message, response.status, text);
+  }
+  return text;
+};
+
 /* Profile */
 export const fetchProfile = async (): Promise<UserProfile | null> => {
   try {
@@ -281,6 +299,149 @@ export const updateProfile = async (payload: { display_name?: string | null; pho
 
 export const logout = async (): Promise<void> => {
   await apiFetch<void>("/logout", { method: "POST" });
+};
+
+/* Rewarded Ads */
+type PrepareAdPayload = {
+  placement: string;
+  recaptchaToken?: string | null;
+  clientNonce: string;
+  timestamp: string;
+  signature?: string | null;
+  hints?: Record<string, string>;
+};
+
+export const fetchRewardPolicy = async (): Promise<RewardPolicy> => {
+  return apiFetch<RewardPolicy>("/policy");
+};
+
+export const fetchWalletBalance = async (): Promise<WalletBalance> => {
+  return apiFetch<WalletBalance>("/wallet");
+};
+
+export const prepareRewardedAd = async ({
+  placement,
+  recaptchaToken,
+  clientNonce,
+  timestamp,
+  signature,
+  hints,
+}: PrepareAdPayload): Promise<PrepareAdResponse> => {
+  const bodyPayload: Record<string, unknown> = {
+    placement,
+    clientNonce,
+    timestamp,
+  };
+  if (recaptchaToken) {
+    bodyPayload.recaptchaToken = recaptchaToken;
+  }
+  if (signature) {
+    bodyPayload.signature = signature;
+  }
+  if (hints && Object.keys(hints).length > 0) {
+    bodyPayload.hints = hints;
+  }
+  const body = JSON.stringify(bodyPayload);
+  return apiFetch<PrepareAdResponse>("/ads/prepare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+};
+
+export const fetchRewardMetrics = async (): Promise<RewardMetricsSummary> => {
+  const metricsText = await apiFetchRaw("/metrics");
+  const summary: RewardMetricsSummary = {
+    prepareOk: 0,
+    prepareRejected: 0,
+    ssvSuccess: 0,
+    ssvInvalid: 0,
+    ssvDuplicate: 0,
+    ssvError: 0,
+    rewardCoins: 0,
+    failureRatio: 0,
+    effectiveDailyCap: 0,
+  };
+
+  const parseLabels = (segment: string): Record<string, string> => {
+    const result: Record<string, string> = {};
+    segment
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .forEach((entry) => {
+        const [key, rawValue] = entry.split("=", 2);
+        if (key && rawValue) {
+          result[key] = rawValue.replace(/^"|"$/g, "");
+        }
+      });
+    return result;
+  };
+
+  const lines = metricsText.split("\n");
+  for (const line of lines) {
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+    if (line.startsWith("rewarded_ads_prepare_total")) {
+      const match = line.match(/^rewarded_ads_prepare_total\{([^}]*)\}\s+([0-9eE+.\-]+)$/);
+      if (!match) {
+        continue;
+      }
+      const labels = parseLabels(match[1]);
+      const value = Number(match[2]) || 0;
+      if (labels.status === "ok") {
+        summary.prepareOk = value;
+      } else {
+        summary.prepareRejected += value;
+      }
+      continue;
+    }
+    if (line.startsWith("rewarded_ads_ssv_total")) {
+      const match = line.match(/^rewarded_ads_ssv_total\{([^}]*)\}\s+([0-9eE+.\-]+)$/);
+      if (!match) {
+        continue;
+      }
+      const labels = parseLabels(match[1]);
+      const value = Number(match[2]) || 0;
+      switch (labels.status) {
+        case "success":
+          summary.ssvSuccess += value;
+          break;
+        case "invalid":
+          summary.ssvInvalid += value;
+          break;
+        case "duplicate":
+          summary.ssvDuplicate += value;
+          break;
+        case "error":
+          summary.ssvError += value;
+          break;
+        default:
+          break;
+      }
+      continue;
+    }
+    if (line.startsWith("rewarded_ads_reward_amount_total")) {
+      const match = line.match(/^rewarded_ads_reward_amount_total\{[^}]*\}\s+([0-9eE+.\-]+)$/);
+      if (!match) {
+        continue;
+      }
+      summary.rewardCoins += Number(match[1]) || 0;
+      continue;
+    }
+    if (line.startsWith("rewarded_ads_failure_ratio")) {
+      const value = Number(line.split(/\s+/).pop() ?? 0);
+      summary.failureRatio = Number.isFinite(value) ? value : 0;
+      continue;
+    }
+    if (line.startsWith("rewarded_ads_effective_daily_cap")) {
+      const value = Number(line.split(/\s+/).pop() ?? 0);
+      summary.effectiveDailyCap = Number.isFinite(value) ? value : 0;
+    }
+  }
+
+  return summary;
 };
 
 /* VPS */

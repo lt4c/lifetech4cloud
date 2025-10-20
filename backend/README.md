@@ -9,6 +9,7 @@ This project exposes a production-ready FastAPI service that performs Discord OA
 - PostgreSQL persistence with SQLAlchemy 2.x and Alembic migrations executed automatically on app startup.
 - `/me` endpoint exposing the authenticated profile and `/health` endpoint verifying API and DB connectivity.
 - Lightweight Jinja2 page to exercise the flow (login button, profile preview, DB health badge, logout button).
+- **Rewarded ads stack**: Google Ad Manager + IMA rewarded ads with nonce issuance, reCAPTCHA Enterprise, Redis backed idempotency, server-side verification (HMAC/RS256), coins ledger, and Prometheus metrics. Front-end `/earn` route loads IMA SDK only on demand.
 
 ## Quick Start
 1. Clone the repository and copy the environment template:
@@ -37,6 +38,69 @@ The PostgreSQL container stores data in the `postgres_data` volume, so user reco
 | `ALLOWED_ORIGINS` | Optional CSV list of allowed CORS origins or `*` |
 | `COOKIE_SECURE` | `true` to mark cookies as Secure (enable in production with HTTPS) |
 | `SESSION_COOKIE_NAME` | Name of the session cookie (default `session`) |
+
+### Rewarded Ads configuration
+
+| Variable | Purpose |
+|----------|---------|
+| `REWARD_AMOUNT` | Coins granted for each successful rewarded ad (default `5`) |
+| `REQUIRED_DURATION` | Minimum duration in seconds reported by the ad network (default `30`) |
+| `MIN_INTERVAL` | Cool-down in seconds between rewards for the same user/device (default `30`) |
+| `RWD_PER_DAY` | Hard daily cap per user before adaptive throttling (default `40`) |
+| `RWD_PER_DEVICE` | Daily cap per device fingerprint (default `60`) |
+| `RWD_PER_DAY_MIN` | Lower bound when adaptive cap reduces quota (default `20`) |
+| `SSV_FAIL_THRESHOLD` | Failure ratio in 30 min window that triggers adaptive cap (default `0.2`) |
+| `AD_TAG_BASE` | Base GAM ad tag URL used to issue IMA requests (must include your network & line items) |
+| `PRICE_FLOOR` | Optional CPM floor appended via `cust_params` |
+| `SSV_SECRET` | Shared secret for HMAC SHA-256 validation (leave blank when using `PUBLIC_KEY_PATH`) |
+| `PUBLIC_KEY_PATH` | Path to PEM public key for RS256 verification (take precedence over `SSV_SECRET`) |
+| `CLIENT_SIGNING_SECRET` | Optional HMAC secret for FE→BE request signing (`X-Client-Signature`) |
+| `RECAPTCHA_PROJECT_ID` / `RECAPTCHA_SITE_KEY` / `RECAPTCHA_API_KEY` | reCAPTCHA Enterprise credentials used on `/ads/prepare` |
+| `RECAPTCHA_MIN_SCORE` | Minimum risk score (default `0.5`) |
+| `RECAPTCHA_ALLOW_MISSING` | Set `true` to bypass reCAPTCHA in non-production environments |
+| `ADS_BLOCKED_ASN` | CSV list of ASNs to reject (VPN/hosts) |
+| `ADS_BLOCKED_IPS` | CIDR ranges to block at prepare time |
+| `ADS_ALLOWED_PLACEMENTS` | Comma list of placement names embedded into `cust_params` (default `earn,daily,boost,test`) |
+| `REDIS_URL` | Redis connection string for nonce store, rate limiting and adaptive cap (`redis://redis:6379/0`) |
+
+Frontend `.env` values:
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_API_BASE_URL` | API origin used by the Vite build |
+| `VITE_RECAPTCHA_SITE_KEY` | reCAPTCHA Enterprise site key used on `/earn` (optional) |
+| `VITE_ADS_CLIENT_SIGNING_KEY` | Mirrors `CLIENT_SIGNING_SECRET` when FE signing is enabled |
+
+## Rewarded Ads (GAM / IMA)
+
+1. **Nonce prepare** – Authenticated clients call `POST /ads/prepare` with placement name, client hints and reCAPTCHA token. The backend:
+   - verifies reCAPTCHA Enterprise, ASN/IP allow list, per-user/device quota and cool-down using Redis + Postgres,
+   - issues a cryptographically random nonce plus GAM ad tag with `cust_params` (`uid`, `nonce`, `placement`, `device`, optional price floor),
+   - records the nonce in Redis for 10 minutes and returns it to the browser.
+2. **IMA playback** – The `/earn` React page (Vite) lazy-loads the Google IMA SDK, requests the returned `adTagUrl`, and waits for `REWARDED_AD_COMPLETED`.
+3. **Server-side verification** – GAM invokes `POST /ads/ssv` (or GET) with `eventId`, `uid`, `nonce`, `duration`, `amount`, and `sig`. The backend:
+   - validates the signature via HMAC (`SSV_SECRET`) or RS256 (`PUBLIC_KEY_PATH`),
+   - enforces idempotency (`eventId`, `uid+nonce`), cool-down, per-user/device/day quotas, and adaptive cap in Redis,
+   - writes an `ad_rewards` record and corresponding wallet/ledger entry in a single transaction.
+4. **Wallet refresh** – The FE polls `GET /wallet` and the auth profile is refreshed. Coins live in the `wallets` table and every adjustment is recorded in the `ledger`.
+
+### Anti-fraud measures
+- Device fingerprint derived from UA, Client Hints, and IP subnet.
+- Redis-backed nonce storage (`ads:nonce:*`) and event idempotency (`ads:event:*`).
+- Adaptive cap reduces `RWD_PER_DAY` when `SSV_FAIL_THRESHOLD` is breached in the last 30 minutes.
+- Optional `X-Client-Signature` header (`HMAC(userId|clientNonce|timestamp|placement)`).
+- `RateLimiter` now uses Redis for distributed throttling (`20 req / 2s` on `/ads/prepare`, `5 req / 10s` on `/ads/ssv`).
+- Metrics exported at `/metrics`: success/error counters, reward totals, failure ratio, effective cap.
+
+Grafana dashboards can scrape the Prometheus exposition directly. Example useful series:
+
+| Metric | Description |
+|--------|-------------|
+| `rewarded_ads_prepare_total{status="ok"}` | Successful `/ads/prepare` responses |
+| `rewarded_ads_ssv_total{status="success"}` | Verified SSV callbacks |
+| `rewarded_ads_reward_amount_total` | Total coins granted (labelled by `network` / `placement`) |
+| `rewarded_ads_failure_ratio` | Rolling failure ratio used for adaptive cap |
+| `rewarded_ads_effective_daily_cap` | Current dynamic per-user quota |
 
 > **Note:** Discord's OAuth API does **not** provide phone numbers. The `phone_number` field is always stored and returned as `null`, and the HTML test page labels it accordingly.
 

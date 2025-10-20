@@ -15,6 +15,7 @@ from app.deps import get_db, get_event_bus
 from app.models import AdminToken, User, VpsSession, Worker
 from app.security.crypto import decrypt_secret, verify_worker_signature
 from app.services.event_bus import SessionEventBus
+from app.services.wallet import WalletService
 
 callbacks_router = APIRouter(prefix="/workers/callback", tags=["worker-callbacks"])
 workers_router = APIRouter(prefix="/workers", tags=["workers"])
@@ -178,9 +179,14 @@ async def worker_result(
     elif status_value == "failed":
         session.status = "failed"
         session.updated_at = now
-        if user:
-            user.coins = (user.coins or 0) + (session.product.price_coins if session.product else 0)
-            db.add(user)
+        if user and session.product:
+            WalletService(db).adjust_balance(
+                user,
+                session.product.price_coins,
+                entry_type="vps.refund",
+                ref_id=session.id,
+                meta={"reason": "worker_failed"},
+            )
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status")
 

@@ -4,10 +4,12 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    BigInteger,
     Numeric,
     String,
     Table,
@@ -61,8 +63,20 @@ class User(Base):
     support_threads = relationship(
         "SupportThread", back_populates="user", passive_deletes=True
     )
-    ads_claims = relationship(
-        "AdsClaim", back_populates="user", passive_deletes=True
+    wallet = relationship(
+        "Wallet",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    ad_rewards = relationship(
+        "AdReward", back_populates="user", passive_deletes=True
+    )
+    ledger_entries = relationship(
+        "LedgerEntry", back_populates="user", passive_deletes=True
+    )
+    reward_limits = relationship(
+        "UserLimit", back_populates="user", passive_deletes=True
     )
 
     def __repr__(self) -> str:  # pragma: no cover - debugging helper
@@ -214,25 +228,100 @@ class VpsSession(Base):
             self.log_url = result["log_url"]
 
 
-class AdsClaim(Base):
-    __tablename__ = "ads_claims"
+class Wallet(Base):
+    __tablename__ = "wallets"
+
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    balance = Column(BigInteger, nullable=False, server_default="0", default=0)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    user = relationship("User", back_populates="wallet")
+
+
+class LedgerEntry(Base):
+    __tablename__ = "ledger"
     __table_args__ = (
-        CheckConstraint("provider in ('adsense','monetag')", name="ck_ads_claims_provider"),
-        Index("ix_ads_claims_user_id", "user_id"),
-        Index("ix_ads_claims_claimed_at", "claimed_at"),
-        UniqueConstraint("nonce", name="uq_ads_claims_nonce"),
+        Index("ix_ledger_user_id_created_at", "user_id", "created_at"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    provider = Column(String(32), nullable=False)
-    nonce = Column(String(128), nullable=False)
-    value_coins = Column(Integer, nullable=False)
-    claimed_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    type = Column(String(64), nullable=False)
+    amount = Column(Integer, nullable=False)
+    balance_after = Column(BigInteger, nullable=False)
+    ref_id = Column(UUID(as_uuid=True), nullable=True)
     meta = Column(MutableDict.as_mutable(JSONB), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    user = relationship("User", back_populates="ads_claims")
+    user = relationship("User", back_populates="ledger_entries")
+
+
+class AdReward(Base):
+    __tablename__ = "ad_rewards"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_ad_rewards_event_id"),
+        Index("ix_ad_rewards_user_id_created_at", "user_id", "created_at"),
+        Index("ix_ad_rewards_nonce", "nonce"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    network = Column(String(64), nullable=False)
+    event_id = Column(String(191), nullable=False)
+    nonce = Column(String(191), nullable=False)
+    reward_amount = Column(Integer, nullable=False)
+    duration_sec = Column(Integer, nullable=False)
+    placement = Column(String(64), nullable=True)
+    device_hash = Column(String(191), nullable=True)
+    meta = Column(MutableDict.as_mutable(JSONB), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    user = relationship("User", back_populates="ad_rewards")
+
+
+class UserLimit(Base):
+    __tablename__ = "user_limits"
+    __table_args__ = (
+        UniqueConstraint("user_id", "device_hash", "day", name="uq_user_limits_scope"),
+        Index("ix_user_limits_user_day", "user_id", "day"),
+    )
+
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    device_hash = Column(String(191), primary_key=True, default="__user__", nullable=False)
+    day = Column(Date, primary_key=True, nullable=False)
+    rewards = Column(Integer, nullable=False, server_default="0", default=0)
+    device_rewards = Column(Integer, nullable=False, server_default="0", default=0)
+    last_reward_at = Column(DateTime(timezone=True), nullable=True)
+    bad_score = Column(Integer, nullable=False, server_default="0", default=0)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    user = relationship("User", back_populates="reward_limits")
 
 
 class SupportThread(Base):

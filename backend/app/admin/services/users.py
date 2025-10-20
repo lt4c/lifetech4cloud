@@ -8,6 +8,7 @@ from sqlalchemy import delete, distinct, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import User
+from app.services.wallet import WalletService
 
 from ..audit import AuditContext, record_audit
 from ..deps import invalidate_permission_cache_for_user
@@ -293,23 +294,31 @@ def update_user_coins(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
     if amount <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount must be positive.")
-    before_balance = user.coins or 0
+    wallet_service = WalletService(db)
+    before_balance = wallet_service.get_balance(user).balance
     if operation == "add":
-        new_balance = before_balance + amount
+        delta = amount
     elif operation == "sub":
-        new_balance = before_balance - amount
+        delta = -amount
     elif operation == "set":
-        new_balance = amount
+        delta = amount - before_balance
     else:  # pragma: no cover - validated earlier
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported operation.")
+    new_balance = before_balance + delta
     if new_balance < 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Coin balance cannot be negative.",
         )
-    user.coins = new_balance
-    db.add(user)
-    db.commit()
+    with db.begin():
+        wallet_result = wallet_service.adjust_balance(
+            user,
+            delta,
+            entry_type="admin.adjustment",
+            ref_id=None,
+            meta={"reason": reason, "operation": operation},
+        )
+        new_balance = wallet_result.balance
     db.refresh(user)
     record_audit(
         db,
@@ -318,7 +327,11 @@ def update_user_coins(
         target_type="user",
         target_id=str(user.id),
         before={"coins": before_balance, "reason": None},
-        after={"coins": user.coins, "reason": reason},
+        after={
+            "coins": new_balance,
+            "reason": reason,
+            "operation": operation,
+        },
     )
     db.commit()
     return get_user(db, user.id)

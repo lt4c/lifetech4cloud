@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models import User, VpsProduct, VpsSession, Worker
 from app.services.event_bus import SessionEventBus
+from app.services.wallet import WalletService
 from app.services.worker_client import WorkerClient
 from app.services.worker_selector import WorkerSelector
 
@@ -104,8 +105,9 @@ class VpsService:
             return existing, False
 
         product = self._load_product(product_id)
-        coins_before = user.coins or 0
-        if coins_before < product.price_coins:
+        wallet_service = WalletService(self.db)
+        balance_info = wallet_service.get_balance(user)
+        if balance_info.balance < product.price_coins:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient coin balance")
 
         selector = WorkerSelector(self.db)
@@ -123,9 +125,25 @@ class VpsService:
             idempotency_key=key,
         )
 
-        user.coins = coins_before - product.price_coins
-        self.db.add_all([session, user])
-        self.db.commit()
+        try:
+            with self.db.begin():
+                self.db.add(session)
+                self.db.flush()
+                wallet_service.adjust_balance(
+                    user,
+                    -product.price_coins,
+                    entry_type="vps.purchase",
+                    ref_id=session.id,
+                    meta={"product_id": str(product.id)},
+                )
+        except HTTPException:
+            raise
+        except Exception as exc:  # pragma: no cover - defensive
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to create VPS session",
+            ) from exc
+
         self.db.refresh(session)
 
         if self.event_bus:
@@ -151,11 +169,17 @@ class VpsService:
             # bubble HTTP errors directly to client
             raise
         except Exception as exc:  # pragma: no cover - defensive
-            session.status = "failed"
-            session.updated_at = datetime.now(timezone.utc)
-            user.coins = coins_before
-            self.db.add_all([session, user])
-            self.db.commit()
+            with self.db.begin():
+                session.status = "failed"
+                session.updated_at = datetime.now(timezone.utc)
+                wallet_service.adjust_balance(
+                    user,
+                    product.price_coins,
+                    entry_type="vps.refund",
+                    ref_id=session.id,
+                    meta={"reason": "worker_unreachable"},
+                )
+                self.db.add(session)
             if self.event_bus:
                 await self.event_bus.publish(
                     session.id,
@@ -182,8 +206,8 @@ class VpsService:
             }
         ]
         session.updated_at = datetime.now(timezone.utc)
-        self.db.add(session)
-        self.db.commit()
+        with self.db.begin():
+            self.db.add(session)
 
         if self.event_bus:
             await self.event_bus.publish(

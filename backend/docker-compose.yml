@@ -1,13 +1,16 @@
-﻿services:
+services:
   backend:
     build: .
     env_file: .env
     environment:
       ALLOWED_ORIGINS: https://dash.lt4c.io.vn
       FORWARDED_ALLOW_IPS: "*"
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     ports:
       - "8000:8000"
     healthcheck:
@@ -35,6 +38,15 @@
       backend:
         condition: service_healthy
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+
   db:
     image: postgres:16
     environment:
@@ -51,3 +63,4 @@
 
 volumes:
   postgres_data:
+  redis_data:

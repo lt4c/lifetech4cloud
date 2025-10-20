@@ -13,6 +13,7 @@ from fastapi.exception_handlers import http_exception_handler, request_validatio
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from . import utils
 from .admin import init_admin
@@ -29,10 +30,11 @@ from app.api import announcements as announcements_router
 from app.api import restore_admin as restore_admin_router
 from app.api import support as support_router
 from app.api import vps as vps_router
-from app.services.ads import AdsNonceManager
+from app.services.ads import AdsNonceManager, AdsService
 from app.services.event_bus import SessionEventBus
 from app.services.support_event_bus import SupportEventBus
 from app.services.kyaro import KyaroAssistant
+from app.services.wallet import WalletService
 from app.services.worker_client import WorkerClient
 from app.admin.models import Role, UserRole
 from app.admin.services import assets as asset_service
@@ -40,6 +42,11 @@ from app.admin.services import assets as asset_service
 settings = get_settings()
 logger = logging.getLogger("uvicorn.error")
 app = FastAPI(title="Discord Login App")
+
+try:  # pragma: no cover - optional dependency
+    import redis  # type: ignore
+except ImportError:  # pragma: no cover
+    redis = None
 
 _ALLOWED_METHODS_HEADER = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
 
@@ -170,6 +177,19 @@ def run_db_migrations() -> None:
     command.upgrade(config, "head")
 
 
+def _init_redis():
+    if not settings.redis_url or redis is None:
+        return None
+    try:
+        client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+        client.ping()
+        logger.info("Connected to Redis at %s", settings.redis_url)
+        return client
+    except Exception:  # pragma: no cover - best effort
+        logger.exception("Unable to connect to Redis; continuing without Redis-backed features.")
+        return None
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     run_db_migrations()
@@ -177,7 +197,9 @@ def on_startup() -> None:
     app.state.event_bus = SessionEventBus()
     app.state.support_bus = SupportEventBus()
     app.state.worker_client = WorkerClient()
-    app.state.ads_nonce_manager = AdsNonceManager()
+    app.state.redis = _init_redis()
+    nonce_ttl = max(settings.reward_min_interval * 4, 600)
+    app.state.ads_nonce_manager = AdsNonceManager(ttl_seconds=nonce_ttl, redis_client=getattr(app.state, "redis", None))
     app.state.kyaro_assistant = KyaroAssistant()
 
 app.include_router(restore_admin_router.router)
@@ -216,6 +238,49 @@ async def health_config() -> dict[str, object]:
     return {
         "allowed_origins": settings.allowed_origins_list,
         "allow_credentials": bool(settings.allowed_origins_list),
+    }
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics_endpoint() -> Response:
+    payload = generate_latest()
+    return Response(content=payload, media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/wallet")
+async def wallet_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    wallet_service = WalletService(db)
+    balance = wallet_service.get_balance(current_user).balance
+    return {"balance": balance}
+
+
+@app.get("/policy")
+async def public_policy(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    nonce_manager = getattr(request.app.state, "ads_nonce_manager", None)
+    if nonce_manager is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Ads service unavailable")
+    service = AdsService(
+        db,
+        nonce_manager,
+        redis_client=getattr(request.app.state, "redis", None),
+        settings=settings,
+    )
+    effective_cap = service._get_effective_daily_cap()  # noqa: SLF001 - public exposure
+    return {
+        "rewardPerView": settings.reward_amount,
+        "requiredDuration": settings.required_duration,
+        "minInterval": settings.reward_min_interval,
+        "perDay": settings.rewards_per_day,
+        "perDevice": settings.rewards_per_device,
+        "effectivePerDay": effective_cap,
+        "priceFloor": settings.price_floor,
+        "placements": settings.allowed_placements,
     }
 
 
@@ -319,6 +384,8 @@ async def discord_callback(
 
 
 def _build_user_profile(db: Session, current_user: User) -> UserProfile:
+    wallet_service = WalletService(db)
+    balance = wallet_service.get_balance(current_user).balance
     role_names = db.scalars(
         select(Role.name)
         .join(UserRole, UserRole.role_id == Role.id)
@@ -348,7 +415,7 @@ def _build_user_profile(db: Session, current_user: User) -> UserProfile:
         display_name=current_user.display_name,
         avatar_url=current_user.avatar_url,
         phone_number=current_user.phone_number,
-        coins=current_user.coins or 0,
+        coins=balance,
         roles=roles,
         is_admin=is_admin,
         has_admin=has_admin,
@@ -457,3 +524,12 @@ async def on_shutdown() -> None:
     client = getattr(app.state, "worker_client", None)
     if client is not None:
         await client.aclose()
+    redis_client = getattr(app.state, "redis", None)
+    if redis_client is not None:
+        try:
+            redis_client.close()
+        except AttributeError:  # pragma: no cover - older redis client
+            try:
+                redis_client.connection_pool.disconnect()
+            except Exception:  # pragma: no cover
+                pass

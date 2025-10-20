@@ -250,3 +250,38 @@ export interface StatusDb {
   slow_queries: SlowQuery[];
   last_migration: string | null;
 }
+
+export interface RewardPolicy {
+  rewardPerView: number;
+  requiredDuration: number;
+  minInterval: number;
+  perDay: number;
+  perDevice: number;
+  effectivePerDay: number;
+  priceFloor?: number | null;
+  placements: string[];
+}
+
+export interface PrepareAdResponse {
+  nonce: string;
+  adTagUrl: string;
+  expiresIn: number;
+  deviceHash: string;
+  priceFloor?: number | null;
+}
+
+export interface WalletBalance {
+  balance: number;
+}
+
+export interface RewardMetricsSummary {
+  prepareOk: number;
+  prepareRejected: number;
+  ssvSuccess: number;
+  ssvInvalid: number;
+  ssvDuplicate: number;
+  ssvError: number;
+  rewardCoins: number;
+  failureRatio: number;
+  effectiveDailyCap: number;
+}

@@ -11,6 +11,7 @@ import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
 import Profile from "@/pages/Profile";
 import VPS from "@/pages/VPS";
+import Earn from "@/pages/Earn";
 import Announcements from "@/pages/Announcements";
 import AnnouncementDetail from "@/pages/AnnouncementDetail";
 import Support from "@/pages/Support";
@@ -23,6 +24,7 @@ import Analytics from "@/pages/admin/Analytics";
 import Settings from "@/pages/admin/Settings";
 import NotFound from "@/pages/NotFound";
 import { ThreeDot } from "react-loading-indicators";
+import { Footer } from "@/components/Footer";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +35,7 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => (
       <div className="flex-1 flex flex-col">
         <Header />
         <main className="flex-1 p-6 overflow-auto">{children}</main>
+        <Footer />
       </div>
     </div>
   </SidebarProvider>
@@ -75,6 +78,7 @@ const AppRoutes = () => (
     <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
     <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
     <Route path="/vps" element={<ProtectedRoute><VPS /></ProtectedRoute>} />
+    <Route path="/earn" element={<ProtectedRoute><Earn /></ProtectedRoute>} />
     <Route path="/announcements" element={<ProtectedRoute><Announcements /></ProtectedRoute>} />
     <Route path="/announcements/:slug" element={<ProtectedRoute><AnnouncementDetail /></ProtectedRoute>} />
     <Route path="/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />

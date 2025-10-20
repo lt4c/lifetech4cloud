@@ -24,6 +24,9 @@ dependencies = [
     "cryptography>=42.0.0",
     "openai>=1.37.0",
     "email-validator>=2.1",
+    "redis[hiredis]>=5.0",
+    "prometheus-client>=0.20",
+    "pyjwt[crypto]>=2.9",
 ]
 
 [project.optional-dependencies]

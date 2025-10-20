@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Database, Globe, Server, Users, Zap } from "lucide-react";
+import { Activity, Coins, Database, Globe, Server, Users, Zap } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -10,9 +10,10 @@ import {
   fetchStatusDeps,
   fetchStatusHealth,
   fetchVpsSessions,
+  fetchRewardMetrics,
   fetchWorkers,
 } from "@/lib/api-client";
-import type { AdminUsersResponse, HealthConfig, StatusDb, StatusDeps, StatusHealth } from "@/lib/types";
+import type { AdminUsersResponse, HealthConfig, RewardMetricsSummary, StatusDb, StatusDeps, StatusHealth } from "@/lib/types";
 
 const formatNumber = (value: number | null | undefined, digits = 1) => {
   if (value === null || value === undefined) return "--";
@@ -49,6 +50,12 @@ export default function Analytics() {
     staleTime: 60_000,
   });
 
+
+  const { data: rewardMetrics } = useQuery<RewardMetricsSummary>({
+    queryKey: ['reward-metrics', 'admin'],
+    queryFn: fetchRewardMetrics,
+    staleTime: 60_000,
+  });
   const { data: workers = [] } = useQuery({
     queryKey: ["admin-workers", "analytics"],
     queryFn: fetchWorkers,
@@ -67,6 +74,18 @@ export default function Analytics() {
     staleTime: 60_000,
   });
 
+  const rewardSummary: RewardMetricsSummary = rewardMetrics ?? {
+    prepareOk: 0,
+    prepareRejected: 0,
+    ssvSuccess: 0,
+    ssvInvalid: 0,
+    ssvDuplicate: 0,
+    ssvError: 0,
+    rewardCoins: 0,
+    failureRatio: 0,
+    effectiveDailyCap: 0,
+  };
+
   const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
 
   const summaries = useMemo(() => {
@@ -76,6 +95,11 @@ export default function Analytics() {
     const idleWorkers = workers.filter((worker) => worker.status === "idle").length;
     return { activeSessions, readySessions, busyWorkers, idleWorkers };
   }, [sessions, workers]);
+  const totalSsvAttempts = rewardSummary.ssvSuccess + rewardSummary.ssvInvalid + rewardSummary.ssvError + rewardSummary.ssvDuplicate;
+  const fillRate = rewardSummary.prepareOk ? (rewardSummary.ssvSuccess / rewardSummary.prepareOk) : 0;
+  const successRate = totalSsvAttempts ? (rewardSummary.ssvSuccess / totalSsvAttempts) : 0;
+  const rpmUser = users?.total ? rewardSummary.rewardCoins / Math.max(users.total, 1) : 0;
+
 
   return (
     <div className="space-y-8">
@@ -111,6 +135,12 @@ export default function Analytics() {
             value: workers.length.toString(),
             description: `${summaries.busyWorkers} busy / ${summaries.idleWorkers} idle`,
             icon: Zap,
+          },
+          {
+            label: "Rewarded Ads",
+            value: rewardSummary.prepareOk ? `${rewardSummary.ssvSuccess}/${rewardSummary.prepareOk}` : "--",
+            description: `Fill ${(fillRate * 100).toFixed(0)}% · SSV ${(successRate * 100).toFixed(0)}%`,
+            icon: Coins,
           },
           {
             label: "CORS Origins",
@@ -214,6 +244,41 @@ export default function Analytics() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="glass-card">
+        <CardHeader>
+          <CardTitle>Rewarded Ads Insight</CardTitle>
+          <CardDescription>Aggregated counters from Prometheus metrics</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 text-sm">
+            <div className="flex items-center justify-between rounded-lg border border-border/40 px-3 py-2">
+              <span className="font-medium">Successful SSV</span>
+              <span>{rewardSummary.ssvSuccess.toLocaleString()} / {totalSsvAttempts.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border/40 px-3 py-2">
+              <span className="font-medium">Fill rate</span>
+              <span>{(fillRate * 100).toFixed(1)}%</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border/40 px-3 py-2">
+              <span className="font-medium">Failure ratio (30m)</span>
+              <span>{(rewardSummary.failureRatio * 100).toFixed(1)}%</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border/40 px-3 py-2">
+              <span className="font-medium">Effective daily cap</span>
+              <span>{rewardSummary.effectiveDailyCap}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border/40 px-3 py-2">
+              <span className="font-medium">Coins granted</span>
+              <span>{rewardSummary.rewardCoins.toLocaleString()} xu</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-border/40 px-3 py-2">
+              <span className="font-medium">RPM per user</span>
+              <span>{rpmUser.toFixed(2)}</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="glass-card">
         <CardHeader>

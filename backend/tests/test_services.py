@@ -1,9 +1,13 @@
-﻿import asyncio
+import asyncio
+import hashlib
+import hmac
 import os
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
+from fastapi import HTTPException
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 # Configure environment for tests
@@ -16,8 +20,9 @@ os.environ.setdefault("BASE_URL", "https://example.com")
 os.environ.setdefault("ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef")
 
 from app.db import Base
-from app.models import User, VpsProduct, Worker
-from app.services.ads import AdsNonceManager, AdsService
+from app.models import LedgerEntry, User, VpsProduct, Worker
+from app.services.ads import AdsNonceError, AdsNonceManager, SSVSignatureVerifier
+from app.services.wallet import WalletService
 from app.services.vps import VpsService
 from app.services.event_bus import SessionEventBus
 from app.services.worker_client import WorkerClient
@@ -58,9 +63,11 @@ def db_session(tmp_path):
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path/'service.db'}", future=True)
     Base.metadata.create_all(bind=engine)
     SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
-    with SessionLocal() as session:
-        yield session
-    Base.metadata.drop_all(bind=engine)
+    try:
+        with SessionLocal() as session:
+            yield session
+    finally:
+        Base.metadata.drop_all(bind=engine)
 
 
 @pytest.mark.asyncio
@@ -86,6 +93,7 @@ async def test_purchase_and_create_idempotent(db_session: Session):
     event_bus = RecordingEventBus()
     service = VpsService(db_session, event_bus)
     client = DummyWorkerClient()
+    wallet_service = WalletService(db_session)
 
     session, created = await service.purchase_and_create(
         user=user,
@@ -96,7 +104,7 @@ async def test_purchase_and_create_idempotent(db_session: Session):
     )
     assert created is True
     assert session.status == "provisioning"
-    assert user.coins == 75
+    assert wallet_service.get_balance(user).balance == 75
     assert client.created, "Worker client should be invoked"
 
     session_second, created_second = await service.purchase_and_create(
@@ -108,26 +116,85 @@ async def test_purchase_and_create_idempotent(db_session: Session):
     )
     assert created_second is False
     assert session_second.id == session.id
-    assert user.coins == 75, "Coins should not be deducted twice"
+    assert wallet_service.get_balance(user).balance == 75, "Coins should not be deducted twice"
 
 
-def test_ads_service_claim(db_session: Session):
-    user = User(id=uuid4(), discord_id="d2", username="ads-user", coins=0)
+def test_wallet_service_adjustments(db_session: Session):
+    user = User(id=uuid4(), discord_id="wallet", username="wallet", coins=0)
     db_session.add(user)
     db_session.commit()
 
-    nonce_manager = AdsNonceManager(ttl_seconds=60)
-    service = AdsService(db_session, nonce_manager)
+    wallet = WalletService(db_session)
+    balance = wallet.adjust_balance(user, 10, entry_type="ads.reward", ref_id=None)
+    assert balance.balance == 10
+    assert user.coins == 10
 
-    nonce = service.start(user)
-    claim = service.claim(
-        user,
-        nonce=nonce,
-        provider="adsense",
-        proof={"token": "abcdef123456", "value": 5},
+    balance = wallet.adjust_balance(user, -3, entry_type="debit.test", ref_id=None)
+    assert balance.balance == 7
+    entries = db_session.execute(select(LedgerEntry).where(LedgerEntry.user_id == user.id)).scalars().all()
+    assert len(entries) == 2
+    assert {entry.type for entry in entries} == {"ads.reward", "debit.test"}
+
+    with pytest.raises(HTTPException):
+        wallet.adjust_balance(user, -100, entry_type="debit.fail", ref_id=None)
+
+
+def test_ads_nonce_manager_roundtrip():
+    manager = AdsNonceManager(ttl_seconds=30)
+    user_id = uuid4()
+    nonce = manager.issue(user_id, "device-hash", "earn")
+    record = manager.consume(user_id, nonce)
+    assert record.device_hash == "device-hash"
+    assert record.placement == "earn"
+
+    with pytest.raises(AdsNonceError):
+        manager.consume(user_id, nonce)
+
+    with pytest.raises(AdsNonceError):
+        manager.consume(uuid4(), "missing")
+
+
+def test_ssv_signature_verifier_hmac():
+    settings = SimpleNamespace(ssv_secret="super-secret", ssv_public_key_path=None)
+    verifier = SSVSignatureVerifier(settings)
+    payload = "eventId=abc|uid=user|nonce=n-1|amount=5|duration=30|placement=earn|device=hash".encode()
+    signature = hmac.new(settings.ssv_secret.encode(), payload, hashlib.sha256).hexdigest()
+
+    verifier.verify(
+        event_id="abc",
+        uid="user",
+        nonce="n-1",
+        amount=5,
+        duration=30,
+        device_hash="hash",
+        placement="earn",
+        signature=signature,
     )
-    assert claim.value_coins == 5
-    assert user.coins == 5
-    assert claim.provider == "adsense"
+
+    with pytest.raises(HTTPException):
+        verifier.verify(
+            event_id="abc",
+            uid="user",
+            nonce="n-1",
+            amount=5,
+            duration=30,
+            device_hash="hash",
+            placement="earn",
+            signature="deadbeef",
+        )
 
 
+def test_ssv_signature_requires_key():
+    settings = SimpleNamespace(ssv_secret=None, ssv_public_key_path=None)
+    verifier = SSVSignatureVerifier(settings)
+    with pytest.raises(HTTPException):
+        verifier.verify(
+            event_id="abc",
+            uid="user",
+            nonce="n-1",
+            amount=5,
+            duration=30,
+            device_hash="hash",
+            placement="earn",
+            signature="irrelevant",
+        )
