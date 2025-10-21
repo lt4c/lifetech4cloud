@@ -12,6 +12,8 @@ const axios = require('axios');
 const WORKER_TOKEN_FILE = 'worker-tokens.json';
 
 const app = express();
+let vmCreationLocked = false;
+
 
 function securityMiddleware(req, res, next) {
   // Removed origin blocking for broader access
@@ -153,76 +155,68 @@ app.post('/yud-ranyisi', securityMiddleware, async (req, res) => {
   }
 });
 
-// VM creation endpoint
 app.post('/vm-loso', securityMiddleware, async (req, res) => {
-  const { action } = req.body; // Expecting 1, 2, or 3
+  const { action } = req.body;
 
   if (![1, 2, 3].includes(parseInt(action))) {
     return res.status(400).json({ error: 'Invalid action. Must be 1, 2, or 3' });
   }
 
-  let tokenData = {};
-  if (fs.existsSync(WORKER_TOKEN_FILE)) {
-    try {
-      tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
-    } catch (e) {
-      return res.status(500).json({ error: 'Invalid worker token file' });
+  if (vmCreationLocked) {
+    return res.status(429).json({ error: 'Server busy, please try again later' });
+  }
+  vmCreationLocked = true;
+
+  try {
+    let tokenData = {};
+    if (fs.existsSync(WORKER_TOKEN_FILE)) {
+      try {
+        tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
+      } catch (e) {
+        return res.status(500).json({ error: 'Invalid worker token file' });
+      }
     }
+
+    const availableTokens = Object.keys(tokenData).filter(token =>
+      tokenData[token].slot >= 1 && tokenData[token].inuse === false
+    );
+
+    if (availableTokens.length === 0) {
+      return res.status(400).json({ error: 'No available tokens' });
+    }
+
+    const selectedToken = availableTokens[Math.floor(Math.random() * availableTokens.length)];
+    tokenData[selectedToken].slot -= 1;
+    tokenData[selectedToken].inuse = true;
+
+    const route = 'quack_' + Math.random().toString(36).substring(2, 7);
+    fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+
+    let scriptFile;
+    switch (parseInt(action)) {
+      case 1: scriptFile = 'linux.js'; break;
+      case 2: scriptFile = 'win10.js'; break;
+      case 3: scriptFile = '2z2.js'; break;
+    }
+
+    const { spawn } = require('child_process');
+    const vmProcess = spawn('node', [scriptFile, selectedToken, route, tunnelUrl || ''], {
+      stdio: 'inherit',
+      detached: true,
+      cwd: __dirname
+    });
+    vmProcess.unref();
+
+    console.log(`Started ${scriptFile} with token ${selectedToken} and route ${route}`);
+    res.json({ logUrl: `/log/${route}` });
+  } catch (error) {
+    console.error('Error while creating VM:', error.message);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  } finally {
+    vmCreationLocked = false;
   }
-
-  // Find available token (slot >= 1 and not in use)
-  const availableTokens = Object.keys(tokenData).filter(token =>
-    tokenData[token].slot >= 1 && tokenData[token].inuse === false
-  );
-
-  if (availableTokens.length === 0) {
-    return res.status(400).json({ error: 'No available tokens' });
-  }
-
-  // Pick random token
-  const selectedToken = availableTokens[Math.floor(Math.random() * availableTokens.length)];
-
-  // Decrement slot and set in use
-  tokenData[selectedToken].slot -= 1;
-  tokenData[selectedToken].inuse = true;
-
-  // Create random route
-  const route = 'quack_' + Math.random().toString(36).substring(2, 7);
-
-  // Save updated token data
-  fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
-
-  // Determine which script to run based on action (scripts are in same directory)
-  let scriptFile;
-  switch (parseInt(action)) {
-    case 1:
-      scriptFile = 'linux.js';
-      break;
-    case 2:
-      scriptFile = 'win10.js';
-      break;
-    case 3:
-      scriptFile = '2z2.js';
-      break;
-  }
-
-  // Start the VM creation process with tunnel URL
-  const { spawn } = require('child_process');
-  const vmProcess = spawn('node', [scriptFile, selectedToken, route, tunnelUrl || ''], {
-    stdio: 'inherit',
-    detached: true,
-    cwd: __dirname
-  });
-
-  vmProcess.unref();
-
-  console.log(`Started ${scriptFile} with token ${selectedToken} and route ${route}`);
-
-  res.json({ logUrl: `/log/${route}` });
 });
 
-// Serve logs - read txt files corresponding to route in worker directory
-// Cloudflare tunnel setup
 let tunnelUrl = null;
 let tunnelApp = null;
 
@@ -384,6 +378,29 @@ app.get('/log/:route', (req, res) => {
     res.status(404).send('Logs not found');
   }
 });
+
+app.get('/tokenleft', (req, res) => {
+  try {
+    if (!fs.existsSync(WORKER_TOKEN_FILE)) {
+      return res.json({ totalSlots: 0 });
+    }
+
+    const tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
+    let totalSlots = 0;
+
+    for (const [token, data] of Object.entries(tokenData)) {
+      if (typeof data.slot === 'number' && data.slot > 0) {
+        totalSlots += data.slot;
+      }
+    }
+
+    res.json({ totalSlots });
+  } catch (err) {
+    console.error('Error reading token slots:', err.message);
+    res.status(500).json({ error: 'Failed to calculate token slots' });
+  }
+});
+
 
 // Stop VM endpoint - send end_task to NVIDIA and reset token inuse status
 app.post('/stop/:route', securityMiddleware, async (req, res) => {
