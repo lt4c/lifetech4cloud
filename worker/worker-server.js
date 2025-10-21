@@ -219,45 +219,110 @@ app.post('/vm-loso', securityMiddleware, async (req, res) => {
 
 let tunnelUrl = null;
 let tunnelApp = null;
-
 async function downloadCloudflared() {
-  return new Promise((resolve, reject) => {
-    const isWindows = process.platform === 'win32';
-    const downloadUrl = isWindows
-      ? 'https://github.com/cloudflare/cloudflared/releases/download/2025.9.1/cloudflared-windows-amd64.exe'
-      : 'https://github.com/cloudflare/cloudflared/releases/download/2025.9.1/cloudflared-linux-amd64';
+  const isWindows = process.platform === 'win32';
+  const arch = process.arch; // 'x64', 'arm64', etc.
 
-    const fileName = isWindows ? 'cloudflared.exe' : 'cloudflared';
-    const filePath = path.join(__dirname, fileName);
+  // Map kiến trúc → tên asset GitHub
+  const assetName = isWindows
+    ? (arch === 'arm64' ? 'cloudflared-windows-arm64.exe' : 'cloudflared-windows-amd64.exe')
+    : (arch === 'arm64' ? 'cloudflared-linux-arm64' : 'cloudflared-linux-amd64');
 
-    console.log('Downloading cloudflared from:', downloadUrl);
+  const fileName = isWindows ? 'cloudflared.exe' : 'cloudflared';
+  const filePath = path.join(__dirname, fileName);
 
-    const https = require('https');
-    const fs = require('fs');
-    const file = fs.createWriteStream(filePath);
+  // Cho phép cố định version qua env (VD: CLOUDFLARED_VERSION=2025.9.1)
+  const fixedVersion = process.env.CLOUDFLARED_VERSION;
 
-    https.get(downloadUrl, (response) => {
-      response.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        if (!isWindows) {
-          exec(`chmod +x "${filePath}"`, (error) => {
-            if (error) {
-              console.log('Error making cloudflared executable:', error.message);
-            }
-            resolve(filePath);
-          });
-        } else {
-          resolve(filePath);
-        }
-      });
-    }).on('error', (error) => {
-      console.log('Error downloading cloudflared:', error.message);
-      fs.unlink(filePath, () => {});
-      reject(error);
-    });
+  const axiosInstance = axios.create({
+    headers: {
+      'User-Agent': 'cloudflared-downloader/1.0 (+node)',
+      'Accept': 'application/vnd.github+json'
+    },
+    maxRedirects: 5,
+    timeout: 60_000
   });
+
+  async function resolveDownloadURL() {
+    if (fixedVersion) {
+      return `https://github.com/cloudflare/cloudflared/releases/download/${fixedVersion}/${assetName}`;
+    }
+    // Lấy latest qua GitHub API
+    const api = 'https://api.github.com/repos/cloudflare/cloudflared/releases/latest';
+    const { data } = await axiosInstance.get(api);
+    if (!data || !Array.isArray(data.assets)) {
+      throw new Error('Cannot resolve latest release assets');
+    }
+    const asset = data.assets.find(a => a.name === assetName);
+    if (!asset || !asset.browser_download_url) {
+      // Thử tên amd64 nếu arm64 không có (hiếm, nhưng phòng hờ)
+      const fallback = data.assets.find(a => a.name.includes(isWindows ? 'windows-amd64' : 'linux-amd64'));
+      if (fallback && fallback.browser_download_url) return fallback.browser_download_url;
+      throw new Error(`Asset not found: ${assetName}`);
+    }
+    return asset.browser_download_url;
+  }
+
+  async function streamToFile(url) {
+    console.log('Downloading cloudflared from:', url);
+    const response = await axiosInstance.get(url, { responseType: 'stream', validateStatus: s => s >= 200 && s < 400 });
+    if (response.status >= 300 && response.status < 400 && response.headers.location) {
+      // Axios đã maxRedirects=5, nhưng đề phòng server meta-redirect kỳ cục
+      return streamToFile(response.headers.location);
+    }
+    if (response.status !== 200) {
+      throw new Error(`HTTP ${response.status} when downloading cloudflared`);
+    }
+
+    // Ghi ra file tạm trước rồi rename để tránh 0KB nếu stream hỏng giữa chừng
+    const tmpPath = filePath + '.part';
+    await new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(tmpPath);
+      response.data.pipe(file);
+      file.on('finish', () => file.close(resolve));
+      file.on('error', reject);
+      response.data.on('error', reject);
+    });
+
+    // Kiểm tra size
+    const stat = fs.statSync(tmpPath);
+    if (!stat.size || stat.size < 100 * 1024) {
+      // <100KB gần như chắc hỏng (binary thật ~10–30MB)
+      fs.unlinkSync(tmpPath);
+      throw new Error(`Downloaded file too small (${stat.size} bytes)`);
+    }
+
+    // Đặt quyền & rename
+    if (!isWindows) {
+      try { fs.chmodSync(tmpPath, 0o755); } catch (e) { console.log('chmod failed:', e.message); }
+    }
+    fs.renameSync(tmpPath, filePath);
+    return filePath;
+  }
+
+  // Thử tải, có fallback nếu fail
+  try {
+    const url = await resolveDownloadURL();
+    const p = await streamToFile(url);
+    console.log('Cloudflared downloaded to:', p);
+    return p;
+  } catch (e) {
+    console.log('Primary download failed:', e.message);
+    // Fallback: thử "latest" tag trực tiếp theo pattern (ít khi cần)
+    try {
+      const fallbackUrl = isWindows
+        ? `https://github.com/cloudflare/cloudflared/releases/latest/download/${assetName}`
+        : `https://github.com/cloudflare/cloudflared/releases/latest/download/${assetName}`;
+      const p = await streamToFile(fallbackUrl);
+      console.log('Cloudflared downloaded via fallback to:', p);
+      return p;
+    } catch (e2) {
+      console.log('Fallback download failed:', e2.message);
+      throw e2;
+    }
+  }
 }
+
 
 function setupCloudflareTunnel() {
   return new Promise(async (resolve) => {
