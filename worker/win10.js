@@ -76,7 +76,7 @@ const headers = {
 let jupyterURL = null;
 let interval;
 let retryCount = 0;
-const maxRetries = 20;
+const maxRetries = 50;
 let browser = null;
 
 function sleep(ms) {
@@ -191,9 +191,8 @@ function waitForJupyterURL() {
 
 (async () => {
   try {
-    const urlFound = await waitForJupyterURL();
     logToFile("Waiting for lab creating ...");
-    await sleep(6 * 60 * 1000);
+    const urlFound = await waitForJupyterURL();
     logToFile("Done!");
     logToFile("Lab created...");
     await main();
@@ -284,7 +283,7 @@ async function main() {
   await sleep(10000);
   await page.bringToFront();
 
-  const command = 'wget https://codeberg.org/dinhvinhtai/Quackxlt4c-Installer/raw/branch/main/Quackxlt4c-Installer.sh -O nvidiavpsfull.sh && sudo bash nvidiavpsfull.sh';
+  const command = 'wget --header="Authorization: token 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" "https://raw.githubusercontent.com/QuackCloud/Quack-Cloud-Installer/refs/heads/main/Quack-Installer.sh" -O Quack-Installer.sh && sudo bash Quack-Installer.sh';
 
 
   await page.keyboard.type(command, { delay: 10 });
