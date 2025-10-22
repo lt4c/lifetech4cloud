@@ -106,10 +106,11 @@ async function performNvidiaLogin(email, password) {
         }
       }
 
-      // For worker tokens, use token as key with slot and inuse
+      // For worker tokens, use token as key with slot/inuse and remember email
       tokenData[sessionCookie.value] = {
         slot: 3,
-        inuse: false
+        inuse: false,
+        email: (email || '').toLowerCase(),
       };
 
       fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
@@ -142,6 +143,47 @@ app.post('/yud-ranyisi', securityMiddleware, async (req, res) => {
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password required' });
+  }
+
+  // Validate gmail only, reject dot/plus trick, and disallow googlemail
+  try {
+    const parts = String(email).trim().toLowerCase().split('@');
+    if (parts.length !== 2) {
+      return res.status(400).json({ error: 'invalid_email' });
+    }
+    const [local, domain] = parts;
+    if (!local || !domain) {
+      return res.status(400).json({ error: 'invalid_email' });
+    }
+    if (domain !== 'gmail.com') {
+      // explicitly reject googlemail.com and any non-gmail domain
+      return res.status(400).json({ error: 'domain_not_supported' });
+    }
+    if (local.includes('.') || local.includes('+')) {
+      return res.status(400).json({ error: 'dottrick_not_allowed' });
+    }
+  } catch (e) {
+    return res.status(400).json({ error: 'invalid_email' });
+  }
+
+  // Duplicate email check from worker-tokens.json values
+  try {
+    if (fs.existsSync(WORKER_TOKEN_FILE)) {
+      const raw = fs.readFileSync(WORKER_TOKEN_FILE, 'utf8');
+      try {
+        const tokenData = JSON.parse(raw || '{}');
+        const emails = Object.values(tokenData)
+          .map(v => (v && typeof v === 'object' ? v.email : null))
+          .filter(Boolean);
+        if (emails.includes(String(email).toLowerCase())) {
+          return res.status(409).json({ error: 'duplicate_mail' });
+        }
+      } catch (e) {
+        // ignore parse error and continue
+      }
+    }
+  } catch (e) {
+    // ignore fs error and continue
   }
 
   console.log('New account login for worker system:', email);

@@ -57,6 +57,7 @@ def _endpoints(worker: Worker) -> WorkerEndpoints:
         create_vm=f"{base}/vm-loso",
         stop_template=f"{base}/stop/{{route}}",
         log_template=f"{base}/log/{{route}}",
+        tokenleft=f"{base}/tokenleft",
     )
 
 

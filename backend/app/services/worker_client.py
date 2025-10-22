@@ -141,6 +141,9 @@ class WorkerClient:
         if response.status_code == status.HTTP_200_OK:
             data = response.json()
             return data is True
+        if response.status_code == status.HTTP_409_CONFLICT:
+            # duplicate mail reported by worker
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="duplicate_mail")
 
         try:
             response.raise_for_status()
@@ -151,6 +154,25 @@ class WorkerClient:
             ) from exc
 
         return False
+
+    async def token_left(self, *, worker: Worker | None = None) -> int:
+        """Query how many token slots are left on the worker."""
+        base = self._base(worker)
+        url = urljoin(base + "/", "tokenleft")
+        try:
+            response = await self._client.get(url)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Worker tokenleft check failed",
+            ) from exc
+        try:
+            payload: Any = response.json()
+            total = int((payload or {}).get("totalSlots", 0))
+        except Exception:
+            total = 0
+        return max(total, 0)
 
     async def health(self, *, worker: Worker | None = None) -> dict[str, Any]:
         """Check worker health endpoint."""

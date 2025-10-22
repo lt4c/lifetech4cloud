@@ -217,6 +217,7 @@ class WorkerEndpoints(BaseModel):
     create_vm: AnyHttpUrl
     stop_template: AnyHttpUrl
     log_template: AnyHttpUrl
+    tokenleft: AnyHttpUrl
 
 
 class WorkerDetail(WorkerListItem):
