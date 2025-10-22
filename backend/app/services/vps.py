@@ -118,6 +118,15 @@ class VpsService:
                 detail="No worker available for product",
             )
 
+        # Check token availability on chosen worker before any deduction.
+        # Only block when an explicit 0 is reported. Unknown (-1) or positive continues.
+        tokens_left = await worker_client.token_left(worker=worker)
+        if tokens_left == 0:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Worker has no available tokens",
+            )
+
         session, session_token = self._initial_session(
             user=user,
             product=product,

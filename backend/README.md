@@ -10,6 +10,7 @@ This project exposes a production-ready FastAPI service that performs Discord OA
 - `/me` endpoint exposing the authenticated profile and `/health` endpoint verifying API and DB connectivity.
 - Lightweight Jinja2 page to exercise the flow (login button, profile preview, DB health badge, logout button).
 - **Rewarded ads stack**: Monetag (client ticket flow) plus Google Ad Manager / IMA (SSV) with nonce issuance, Cloudflare Turnstile bot mitigation, Redis-backed idempotency, wallet ledgering, and Prometheus metrics. The `/earn` page only lazy-loads the SDK required for the selected provider.
+- **Public asset drop**: Files placed in `root-be/` are served read-only via `/root-be/<path>` with extension allowlisting and traversal protection, ready for reverse-proxy rewrites to `dash.lt4c.io.vn/<file>`.
 
 ## Quick Start
 1. Clone the repository and copy the environment template:
@@ -77,6 +78,13 @@ Frontend `.env` values:
 | `VITE_API_BASE_URL` | API origin used by the Vite build |
 | `VITE_TURNSTILE_SITE_KEY` | Cloudflare Turnstile site key dùng cho `/earn` |
 | `VITE_ADS_CLIENT_SIGNING_KEY` | Mirrors `CLIENT_SIGNING_SECRET` when FE signing is enabled |
+
+## Public static files
+
+- Backend serves a dedicated read-only folder at `backend/root-be`. A `.gitkeep` file is tracked so the directory exists in source control; drop additional assets alongside it.
+- Requests to `/root-be/<path>` resolve against that directory only. Any traversal attempts are blocked by real-path resolution and 404 responses.
+- Permit list of extensions (`.txt`, `.json`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`, `.ico`, `.css`, `.js`, `.pdf`, `.csv`, `.xml`) avoids accidentally publishing executable content. Update `ALLOWED_PUBLIC_EXTENSIONS` in `app/main.py` if you need to serve more types.
+- Add a reverse proxy rule (e.g. in Nginx: `location / { try_files /root-be/$uri $uri @app; }`) to surface those files at `https://dash.lt4c.io.vn/<file>` without exposing the `/root-be/` prefix publicly.
 
 ## Rewarded Ads Flow
 

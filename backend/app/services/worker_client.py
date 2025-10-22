@@ -19,8 +19,9 @@ class WorkerClient:
         await self._client.aclose()
 
     def _base(self, worker: Worker | None = None) -> str:
-        if self._base_url:
-            return self._base_url
+        base_url = getattr(self, "_base_url", None)
+        if base_url:
+            return base_url
         if not worker:
             raise ValueError("Either base_url or worker must be provided")
         return worker.base_url.rstrip("/")
@@ -141,6 +142,9 @@ class WorkerClient:
         if response.status_code == status.HTTP_200_OK:
             data = response.json()
             return data is True
+        if response.status_code == status.HTTP_409_CONFLICT:
+            # duplicate mail reported by worker
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="duplicate_mail")
 
         try:
             response.raise_for_status()
@@ -151,6 +155,28 @@ class WorkerClient:
             ) from exc
 
         return False
+
+    async def token_left(self, *, worker: Worker | None = None) -> int:
+        """Query how many token slots are left on the worker."""
+        base = self._base(worker)
+        url = urljoin(base + "/", "tokenleft")
+        # Use a local client to avoid relying on instance initialisation
+        timeout = httpx.Timeout(10.0, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                try:
+                    payload: Any = response.json()
+                    total = int((payload or {}).get("totalSlots", 0))
+                except Exception:
+                    total = -1
+            except httpx.HTTPError:
+                # If the worker is unreachable or the endpoint errors, fall back to
+                # "unknown" so callers can decide whether to block. We return -1
+                # to signal unknown, and only an explicit 0 should block usage.
+                total = -1
+        return total
 
     async def health(self, *, worker: Worker | None = None) -> dict[str, Any]:
         """Check worker health endpoint."""

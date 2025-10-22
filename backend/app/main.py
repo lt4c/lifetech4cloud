@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Final
 
 from alembic import command
 from alembic.config import Config
@@ -171,6 +172,24 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "tem
 BASE_DIR = Path(__file__).resolve().parent.parent
 ASSETS_DIR = BASE_DIR / "assets"
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+PUBLIC_ROOT_DIR = (BASE_DIR / "root-be").resolve()
+PUBLIC_ROOT_DIR.mkdir(parents=True, exist_ok=True)
+ALLOWED_PUBLIC_EXTENSIONS: Final[set[str]] = {
+    ".txt",
+    ".json",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".svg",
+    ".ico",
+    ".css",
+    ".js",
+    ".pdf",
+    ".csv",
+    ".xml",
+}
 
 
 def run_db_migrations() -> None:
@@ -524,6 +543,28 @@ Gặp kẻ ra tay, nguồn hóa diều.
 - CI/CD Complete! -
 """
     return Response(content=BAITHO1, media_type="text/plain; charset=utf-8")
+
+def _resolve_public_file(requested_path: str) -> Path:
+    sanitized = (requested_path or "").strip().lstrip("/")
+    if not sanitized:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    candidate = (PUBLIC_ROOT_DIR / sanitized).resolve()
+    if not candidate.is_file() or PUBLIC_ROOT_DIR not in candidate.parents:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    extension = candidate.suffix.lower()
+    if extension not in ALLOWED_PUBLIC_EXTENSIONS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="File type not allowed")
+    return candidate
+
+
+@app.get("/root-be/{requested_path:path}", include_in_schema=False)
+async def serve_public_file(requested_path: str) -> FileResponse:
+    file_path = _resolve_public_file(requested_path)
+    return FileResponse(
+        path=file_path,
+        filename=file_path.name,
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:

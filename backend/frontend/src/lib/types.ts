@@ -185,6 +185,7 @@ export interface WorkerEndpointsInfo {
   create_vm: string;
   stop_template: string;
   log_template: string;
+  tokenleft: string;
 }
 
 export interface WorkerInfo {

@@ -12,6 +12,8 @@ const axios = require('axios');
 const WORKER_TOKEN_FILE = 'worker-tokens.json';
 
 const app = express();
+let vmCreationLocked = false;
+
 
 function securityMiddleware(req, res, next) {
   // Removed origin blocking for broader access
@@ -104,10 +106,11 @@ async function performNvidiaLogin(email, password) {
         }
       }
 
-      // For worker tokens, use token as key with slot and inuse
+      // For worker tokens, use token as key with slot/inuse and remember email
       tokenData[sessionCookie.value] = {
         slot: 3,
-        inuse: false
+        inuse: false,
+        email: (email || '').toLowerCase(),
       };
 
       fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
@@ -142,6 +145,47 @@ app.post('/yud-ranyisi', securityMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'Email and password required' });
   }
 
+  // Validate gmail only, reject dot/plus trick, and disallow googlemail
+  try {
+    const parts = String(email).trim().toLowerCase().split('@');
+    if (parts.length !== 2) {
+      return res.status(400).json({ error: 'invalid_email' });
+    }
+    const [local, domain] = parts;
+    if (!local || !domain) {
+      return res.status(400).json({ error: 'invalid_email' });
+    }
+    if (domain !== 'gmail.com') {
+      // explicitly reject googlemail.com and any non-gmail domain
+      return res.status(400).json({ error: 'domain_not_supported' });
+    }
+    if (local.includes('.') || local.includes('+')) {
+      return res.status(400).json({ error: 'dottrick_not_allowed' });
+    }
+  } catch (e) {
+    return res.status(400).json({ error: 'invalid_email' });
+  }
+
+  // Duplicate email check from worker-tokens.json values
+  try {
+    if (fs.existsSync(WORKER_TOKEN_FILE)) {
+      const raw = fs.readFileSync(WORKER_TOKEN_FILE, 'utf8');
+      try {
+        const tokenData = JSON.parse(raw || '{}');
+        const emails = Object.values(tokenData)
+          .map(v => (v && typeof v === 'object' ? v.email : null))
+          .filter(Boolean);
+        if (emails.includes(String(email).toLowerCase())) {
+          return res.status(409).json({ error: 'duplicate_mail' });
+        }
+      } catch (e) {
+        // ignore parse error and continue
+      }
+    }
+  } catch (e) {
+    // ignore fs error and continue
+  }
+
   console.log('New account login for worker system:', email);
 
   const result = await performNvidiaLogin(email, password);
@@ -153,117 +197,174 @@ app.post('/yud-ranyisi', securityMiddleware, async (req, res) => {
   }
 });
 
-// VM creation endpoint
 app.post('/vm-loso', securityMiddleware, async (req, res) => {
-  const { action } = req.body; // Expecting 1, 2, or 3
+  const { action } = req.body;
 
   if (![1, 2, 3].includes(parseInt(action))) {
     return res.status(400).json({ error: 'Invalid action. Must be 1, 2, or 3' });
   }
 
-  let tokenData = {};
-  if (fs.existsSync(WORKER_TOKEN_FILE)) {
-    try {
-      tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
-    } catch (e) {
-      return res.status(500).json({ error: 'Invalid worker token file' });
+  if (vmCreationLocked) {
+    return res.status(429).json({ error: 'Server busy, please try again later' });
+  }
+  vmCreationLocked = true;
+
+  try {
+    let tokenData = {};
+    if (fs.existsSync(WORKER_TOKEN_FILE)) {
+      try {
+        tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
+      } catch (e) {
+        return res.status(500).json({ error: 'Invalid worker token file' });
+      }
     }
+
+    const availableTokens = Object.keys(tokenData).filter(token =>
+      tokenData[token].slot >= 1 && tokenData[token].inuse === false
+    );
+
+    if (availableTokens.length === 0) {
+      return res.status(400).json({ error: 'No available tokens' });
+    }
+
+    const selectedToken = availableTokens[Math.floor(Math.random() * availableTokens.length)];
+    tokenData[selectedToken].slot -= 1;
+    tokenData[selectedToken].inuse = true;
+
+    const route = 'quack_' + Math.random().toString(36).substring(2, 7);
+    fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+
+    let scriptFile;
+    switch (parseInt(action)) {
+      case 1: scriptFile = 'linux.js'; break;
+      case 2: scriptFile = 'win10.js'; break;
+      case 3: scriptFile = '2z2.js'; break;
+    }
+
+    const { spawn } = require('child_process');
+    const vmProcess = spawn('node', [scriptFile, selectedToken, route, tunnelUrl || ''], {
+      stdio: 'inherit',
+      detached: true,
+      cwd: __dirname
+    });
+    vmProcess.unref();
+
+    console.log(`Started ${scriptFile} with token ${selectedToken} and route ${route}`);
+    res.json({ logUrl: `/log/${route}` });
+  } catch (error) {
+    console.error('Error while creating VM:', error.message);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  } finally {
+    vmCreationLocked = false;
   }
-
-  // Find available token (slot >= 1 and not in use)
-  const availableTokens = Object.keys(tokenData).filter(token =>
-    tokenData[token].slot >= 1 && tokenData[token].inuse === false
-  );
-
-  if (availableTokens.length === 0) {
-    return res.status(400).json({ error: 'No available tokens' });
-  }
-
-  // Pick random token
-  const selectedToken = availableTokens[Math.floor(Math.random() * availableTokens.length)];
-
-  // Decrement slot and set in use
-  tokenData[selectedToken].slot -= 1;
-  tokenData[selectedToken].inuse = true;
-
-  // Create random route
-  const route = 'quack_' + Math.random().toString(36).substring(2, 7);
-
-  // Save updated token data
-  fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
-
-  // Determine which script to run based on action (scripts are in same directory)
-  let scriptFile;
-  switch (parseInt(action)) {
-    case 1:
-      scriptFile = 'linux.js';
-      break;
-    case 2:
-      scriptFile = 'win10.js';
-      break;
-    case 3:
-      scriptFile = '2z2.js';
-      break;
-  }
-
-  // Start the VM creation process with tunnel URL
-  const { spawn } = require('child_process');
-  const vmProcess = spawn('node', [scriptFile, selectedToken, route, tunnelUrl || ''], {
-    stdio: 'inherit',
-    detached: true,
-    cwd: __dirname
-  });
-
-  vmProcess.unref();
-
-  console.log(`Started ${scriptFile} with token ${selectedToken} and route ${route}`);
-
-  res.json({ logUrl: `/log/${route}` });
 });
 
-// Serve logs - read txt files corresponding to route in worker directory
-// Cloudflare tunnel setup
 let tunnelUrl = null;
 let tunnelApp = null;
-
 async function downloadCloudflared() {
-  return new Promise((resolve, reject) => {
-    const isWindows = process.platform === 'win32';
-    const downloadUrl = isWindows
-      ? 'https://github.com/cloudflare/cloudflared/releases/download/2025.9.1/cloudflared-windows-amd64.exe'
-      : 'https://github.com/cloudflare/cloudflared/releases/download/2025.9.1/cloudflared-linux-amd64';
+  const isWindows = process.platform === 'win32';
+  const arch = process.arch; // 'x64', 'arm64', etc.
 
-    const fileName = isWindows ? 'cloudflared.exe' : 'cloudflared';
-    const filePath = path.join(__dirname, fileName);
+  // Map kiến trúc → tên asset GitHub
+  const assetName = isWindows
+    ? (arch === 'arm64' ? 'cloudflared-windows-arm64.exe' : 'cloudflared-windows-amd64.exe')
+    : (arch === 'arm64' ? 'cloudflared-linux-arm64' : 'cloudflared-linux-amd64');
 
-    console.log('Downloading cloudflared from:', downloadUrl);
+  const fileName = isWindows ? 'cloudflared.exe' : 'cloudflared';
+  const filePath = path.join(__dirname, fileName);
 
-    const https = require('https');
-    const fs = require('fs');
-    const file = fs.createWriteStream(filePath);
+  // Cho phép cố định version qua env (VD: CLOUDFLARED_VERSION=2025.9.1)
+  const fixedVersion = process.env.CLOUDFLARED_VERSION;
 
-    https.get(downloadUrl, (response) => {
-      response.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        if (!isWindows) {
-          exec(`chmod +x "${filePath}"`, (error) => {
-            if (error) {
-              console.log('Error making cloudflared executable:', error.message);
-            }
-            resolve(filePath);
-          });
-        } else {
-          resolve(filePath);
-        }
-      });
-    }).on('error', (error) => {
-      console.log('Error downloading cloudflared:', error.message);
-      fs.unlink(filePath, () => {});
-      reject(error);
-    });
+  const axiosInstance = axios.create({
+    headers: {
+      'User-Agent': 'cloudflared-downloader/1.0 (+node)',
+      'Accept': 'application/vnd.github+json'
+    },
+    maxRedirects: 5,
+    timeout: 60_000
   });
+
+  async function resolveDownloadURL() {
+    if (fixedVersion) {
+      return `https://github.com/cloudflare/cloudflared/releases/download/${fixedVersion}/${assetName}`;
+    }
+    // Lấy latest qua GitHub API
+    const api = 'https://api.github.com/repos/cloudflare/cloudflared/releases/latest';
+    const { data } = await axiosInstance.get(api);
+    if (!data || !Array.isArray(data.assets)) {
+      throw new Error('Cannot resolve latest release assets');
+    }
+    const asset = data.assets.find(a => a.name === assetName);
+    if (!asset || !asset.browser_download_url) {
+      // Thử tên amd64 nếu arm64 không có (hiếm, nhưng phòng hờ)
+      const fallback = data.assets.find(a => a.name.includes(isWindows ? 'windows-amd64' : 'linux-amd64'));
+      if (fallback && fallback.browser_download_url) return fallback.browser_download_url;
+      throw new Error(`Asset not found: ${assetName}`);
+    }
+    return asset.browser_download_url;
+  }
+
+  async function streamToFile(url) {
+    console.log('Downloading cloudflared from:', url);
+    const response = await axiosInstance.get(url, { responseType: 'stream', validateStatus: s => s >= 200 && s < 400 });
+    if (response.status >= 300 && response.status < 400 && response.headers.location) {
+      // Axios đã maxRedirects=5, nhưng đề phòng server meta-redirect kỳ cục
+      return streamToFile(response.headers.location);
+    }
+    if (response.status !== 200) {
+      throw new Error(`HTTP ${response.status} when downloading cloudflared`);
+    }
+
+    // Ghi ra file tạm trước rồi rename để tránh 0KB nếu stream hỏng giữa chừng
+    const tmpPath = filePath + '.part';
+    await new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(tmpPath);
+      response.data.pipe(file);
+      file.on('finish', () => file.close(resolve));
+      file.on('error', reject);
+      response.data.on('error', reject);
+    });
+
+    // Kiểm tra size
+    const stat = fs.statSync(tmpPath);
+    if (!stat.size || stat.size < 100 * 1024) {
+      // <100KB gần như chắc hỏng (binary thật ~10–30MB)
+      fs.unlinkSync(tmpPath);
+      throw new Error(`Downloaded file too small (${stat.size} bytes)`);
+    }
+
+    // Đặt quyền & rename
+    if (!isWindows) {
+      try { fs.chmodSync(tmpPath, 0o755); } catch (e) { console.log('chmod failed:', e.message); }
+    }
+    fs.renameSync(tmpPath, filePath);
+    return filePath;
+  }
+
+  // Thử tải, có fallback nếu fail
+  try {
+    const url = await resolveDownloadURL();
+    const p = await streamToFile(url);
+    console.log('Cloudflared downloaded to:', p);
+    return p;
+  } catch (e) {
+    console.log('Primary download failed:', e.message);
+    // Fallback: thử "latest" tag trực tiếp theo pattern (ít khi cần)
+    try {
+      const fallbackUrl = isWindows
+        ? `https://github.com/cloudflare/cloudflared/releases/latest/download/${assetName}`
+        : `https://github.com/cloudflare/cloudflared/releases/latest/download/${assetName}`;
+      const p = await streamToFile(fallbackUrl);
+      console.log('Cloudflared downloaded via fallback to:', p);
+      return p;
+    } catch (e2) {
+      console.log('Fallback download failed:', e2.message);
+      throw e2;
+    }
+  }
 }
+
 
 function setupCloudflareTunnel() {
   return new Promise(async (resolve) => {
@@ -384,6 +485,29 @@ app.get('/log/:route', (req, res) => {
     res.status(404).send('Logs not found');
   }
 });
+
+app.get('/tokenleft', (req, res) => {
+  try {
+    if (!fs.existsSync(WORKER_TOKEN_FILE)) {
+      return res.json({ totalSlots: 0 });
+    }
+
+    const tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
+    let totalSlots = 0;
+
+    for (const [token, data] of Object.entries(tokenData)) {
+      if (typeof data.slot === 'number' && data.slot > 0) {
+        totalSlots += data.slot;
+      }
+    }
+
+    res.json({ totalSlots });
+  } catch (err) {
+    console.error('Error reading token slots:', err.message);
+    res.status(500).json({ error: 'Failed to calculate token slots' });
+  }
+});
+
 
 // Stop VM endpoint - send end_task to NVIDIA and reset token inuse status
 app.post('/stop/:route', securityMiddleware, async (req, res) => {

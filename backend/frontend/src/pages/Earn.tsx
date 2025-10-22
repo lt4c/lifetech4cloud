@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertCircle, CheckCircle2, Loader2, Play, ShieldAlert } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Play, ShieldAlert, MoreHorizontal, Minimize2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+<<<<<<< HEAD
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+=======
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+>>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
 import { useAuth } from "@/context/AuthContext";
 import {
   ApiError,
@@ -26,10 +32,14 @@ import type {
 
 declare global {
   interface Window {
+<<<<<<< HEAD
     turnstile?: {
       render?: (container: HTMLElement | string, options: Record<string, unknown>) => unknown;
       execute: (siteKey: string, options?: { action?: string; cData?: string }) => Promise<string>;
     };
+=======
+    grecaptcha?: { enterprise?: { execute: (siteKey: string, options: { action: string }) => Promise<string> } };
+>>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
     google?: any;
     monetag?: {
       display?: (zoneId: string, options?: Record<string, unknown>) => void;
@@ -46,6 +56,7 @@ let turnstileLoader: Promise<void> | null = null;
 let imaLoader: Promise<void> | null = null;
 const monetagLoaders = new Map<string, Promise<void>>();
 
+<<<<<<< HEAD
 const ensureTurnstile = async (): Promise<void> => {
   if (!TURNSTILE_SITE_KEY || typeof window === "undefined") {
     return;
@@ -55,6 +66,13 @@ const ensureTurnstile = async (): Promise<void> => {
   }
   if (!turnstileLoader) {
     turnstileLoader = new Promise((resolve, reject) => {
+=======
+const ensureRecaptcha = async (): Promise<void> => {
+  if (!RECAPTCHA_SITE_KEY || typeof window === "undefined") return;
+  if (window.grecaptcha?.enterprise) return;
+  if (!recaptchaLoader) {
+    recaptchaLoader = new Promise((resolve, reject) => {
+>>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
       const script = document.createElement("script");
       script.src = `https://challenges.cloudflare.com/turnstile/v0/api.js?render=${TURNSTILE_SITE_KEY}`;
       script.async = true;
@@ -67,12 +85,8 @@ const ensureTurnstile = async (): Promise<void> => {
 };
 
 const ensureImaSdk = async (): Promise<void> => {
-  if (typeof window === "undefined") {
-    throw new Error("IMA SDK requires browser environment");
-  }
-  if (window.google?.ima) {
-    return;
-  }
+  if (typeof window === "undefined") throw new Error("IMA SDK requires browser environment");
+  if (window.google?.ima) return;
   if (!imaLoader) {
     imaLoader = new Promise((resolve, reject) => {
       const script = document.createElement("script");
@@ -86,6 +100,7 @@ const ensureImaSdk = async (): Promise<void> => {
   await imaLoader;
 };
 
+<<<<<<< HEAD
 const ensureMonetagScript = async (scriptUrl: string): Promise<void> => {
   if (!scriptUrl) {
     throw new Error('Monetag script URL missing');
@@ -149,6 +164,14 @@ const executeTurnstile = async (): Promise<string | null> => {
     throw new Error("Cloudflare Turnstile is not available");
   }
   return turnstile.execute(TURNSTILE_SITE_KEY, { action: "ads_prepare" });
+=======
+const executeRecaptcha = async (): Promise<string | null> => {
+  if (!RECAPTCHA_SITE_KEY) return null;
+  await ensureRecaptcha();
+  const executor = window.grecaptcha?.enterprise;
+  if (!executor) throw new Error("reCAPTCHA Enterprise is not available");
+  return executor.execute(RECAPTCHA_SITE_KEY, { action: "ads_prepare" });
+>>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
 };
 
 const signPrepareRequest = async (
@@ -157,56 +180,36 @@ const signPrepareRequest = async (
   timestamp: string,
   placement: string,
 ): Promise<string | null> => {
-  if (!CLIENT_SIGNING_KEY || typeof window === "undefined" || !window.crypto?.subtle) {
-    return null;
-  }
+  if (!CLIENT_SIGNING_KEY || typeof window === "undefined" || !window.crypto?.subtle) return null;
   const encoder = new TextEncoder();
   const keyMaterial = encoder.encode(CLIENT_SIGNING_KEY);
-  const cryptoKey = await window.crypto.subtle.importKey(
-    "raw",
-    keyMaterial,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
+  const cryptoKey = await window.crypto.subtle.importKey("raw", keyMaterial, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const payload = encoder.encode(`${userId}|${clientNonce}|${timestamp}|${placement}`);
   const buffer = await window.crypto.subtle.sign("HMAC", cryptoKey, payload);
-  return Array.from(new Uint8Array(buffer))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
 const collectClientHints = (): Record<string, string> => {
-  if (typeof navigator === "undefined") {
-    return {};
-  }
-  const hints: Record<string, string> = {
-    ua: navigator.userAgent,
-  };
+  if (typeof navigator === "undefined") return {};
+  const hints: Record<string, string> = { ua: navigator.userAgent };
   const uaData = (navigator as unknown as { userAgentData?: any }).userAgentData;
   if (uaData) {
     hints.platform = uaData.platform ?? "";
     hints.mobile = String(uaData.mobile ?? false);
     const brands = uaData.brands ?? uaData.getHighEntropyValues?.(["model", "platformVersion"]);
     if (Array.isArray(brands)) {
-      hints.brands = brands.map((item: { brand?: string; version?: string }) => `${item.brand ?? ""}:${item.version ?? ""}`).join("|");
+      hints.brands = brands.map((it: { brand?: string; version?: string }) => `${it.brand ?? ""}:${it.version ?? ""}`).join("|");
     }
   }
   try {
     hints.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
-  } catch {
-    /* ignore */
-  }
+  } catch {}
   return hints;
 };
 
 const formatSeconds = (seconds: number): string => {
-  if (!Number.isFinite(seconds)) {
-    return "--";
-  }
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
+  if (!Number.isFinite(seconds)) return "--";
+  if (seconds < 60) return `${seconds}s`;
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}m ${secs}s`;
@@ -268,7 +271,6 @@ const Earn = () => {
     refetchOnWindowFocus: true,
     enabled: Boolean(profile),
   });
-
   const walletBalance = walletQuery.data?.balance ?? profile?.coins ?? 0;
   const refetchWallet = walletQuery.refetch;
 
@@ -278,7 +280,6 @@ const Earn = () => {
     staleTime: 60_000,
     onSuccess: (data) => setMetricsSnapshot(data),
   });
-
   const refetchMetrics = metricsQuery.refetch;
   const providerOptions = useMemo(() => {
     const rawEntries = Object.entries(policy?.providers ?? {}).filter(([, cfg]) => cfg?.enabled) as Array<
@@ -319,16 +320,12 @@ const Earn = () => {
   }, [selectedProvider, status]);
 
   const cooldownRemaining = useMemo(() => {
-    if (!cooldownUntil) {
-      return 0;
-    }
+    if (!cooldownUntil) return 0;
     return Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
   }, [cooldownUntil]);
 
   useEffect(() => {
-    if (!cooldownUntil) {
-      return;
-    }
+    if (!cooldownUntil) return;
     const timer = setInterval(() => {
       if (Date.now() >= cooldownUntil) {
         setCooldownUntil(null);
@@ -339,6 +336,7 @@ const Earn = () => {
     return () => clearInterval(timer);
   }, [cooldownUntil]);
 
+<<<<<<< HEAD
   const stopMonetagWatcher = useCallback(() => {
     if (monetagTimerRef.current !== null) {
       window.clearTimeout(monetagTimerRef.current);
@@ -437,73 +435,60 @@ const Earn = () => {
       if (!google?.ima || !videoElement || !containerElement) {
         throw new Error("IMA SDK is not ready");
       }
+=======
+  const runImaAd = useCallback(async (adTagUrl: string) => {
+    await ensureImaSdk();
+    const google = window.google;
+    const videoElement = videoRef.current;
+    const containerElement = adContainerRef.current;
+    if (!google?.ima || !videoElement || !containerElement) throw new Error("IMA SDK is not ready");
+>>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
 
-      return new Promise<void>((resolve, reject) => {
-        const adDisplayContainer = new google.ima.AdDisplayContainer(containerElement, videoElement);
+    return new Promise<void>((resolve, reject) => {
+      const adDisplayContainer = new google.ima.AdDisplayContainer(containerElement, videoElement);
+      try {
+        adDisplayContainer.initialize();
+      } catch {}
+
+      const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+      adsLoader.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, (event: any) => {
+        adsLoader.destroy();
+        reject(new Error(event.getError()?.toString() ?? "IMA playback error"));
+      });
+
+      adsLoader.addEventListener(google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, (event: any) => {
         try {
-          adDisplayContainer.initialize();
-        } catch {
-          /* ignore init errors */
-        }
-
-        const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
-        adsLoader.addEventListener(
-          google.ima.AdErrorEvent.Type.AD_ERROR,
-          (event: any) => {
-            adsLoader.destroy();
-            reject(new Error(event.getError()?.toString() ?? "IMA playback error"));
-          },
-          false,
-        );
-
-        adsLoader.addEventListener(
-          google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
-          (event: any) => {
-            try {
-              const adsManager = event.getAdsManager(videoElement);
-              adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, () => {
-                videoElement.pause();
-              });
-              adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () => setStatus("playing"));
-              adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () => resolve());
-              adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, () => resolve());
-              adsManager.addEventListener(
-                google.ima.AdErrorEvent.Type.AD_ERROR,
-                (errEvent: any) => {
-                  reject(new Error(errEvent.getError()?.toString() ?? "Ad playback error"));
-                },
-              );
-              adsManager.init(
-                containerElement.clientWidth || 640,
-                containerElement.clientHeight || 360,
-                google.ima.ViewMode.NORMAL,
-              );
-              adsManager.start();
-            } catch (error) {
-              reject(error instanceof Error ? error : new Error(String(error)));
-            }
-          },
-          false,
-        );
-
-        const request = new google.ima.AdsRequest();
-        request.adTagUrl = adTagUrl;
-        request.linearAdSlotWidth = containerElement.clientWidth || 640;
-        request.linearAdSlotHeight = containerElement.clientHeight || 360;
-        request.nonLinearAdSlotWidth = containerElement.clientWidth || 640;
-        request.nonLinearAdSlotHeight = (containerElement.clientHeight || 360) / 3;
-        request.setAdWillAutoPlay(true);
-        request.setAdWillPlayMuted(false);
-
-        try {
-          adsLoader.requestAds(request);
+          const adsManager = event.getAdsManager(videoElement);
+          adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, () => videoElement.pause());
+          adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () => setStatus("playing"));
+          adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () => resolve());
+          adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, () => resolve());
+          adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, (err: any) => {
+            reject(new Error(err.getError()?.toString() ?? "Ad playback error"));
+          });
+          adsManager.init(containerElement.clientWidth || 640, containerElement.clientHeight || 360, google.ima.ViewMode.NORMAL);
+          adsManager.start();
         } catch (error) {
           reject(error instanceof Error ? error : new Error(String(error)));
         }
       });
-    },
-    [],
-  );
+
+      const request = new google.ima.AdsRequest();
+      request.adTagUrl = adTagUrl;
+      request.linearAdSlotWidth = containerElement.clientWidth || 640;
+      request.linearAdSlotHeight = containerElement.clientHeight || 360;
+      request.nonLinearAdSlotWidth = containerElement.clientWidth || 640;
+      request.nonLinearAdSlotHeight = (containerElement.clientHeight || 360) / 3;
+      request.setAdWillAutoPlay(true);
+      request.setAdWillPlayMuted(false);
+
+      try {
+        adsLoader.requestAds(request);
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }, []);
 
   const runMonetagFlow = useCallback(
     async (session: PrepareAdResponse, requiredSeconds: number, minInterval: number) => {
@@ -560,9 +545,7 @@ const Earn = () => {
         await new Promise((resolve) => setTimeout(resolve, 1_200));
         const result = await refetchWallet();
         const currentBalance = result.data?.balance ?? previousBalance;
-        if (currentBalance > previousBalance) {
-          return currentBalance;
-        }
+        if (currentBalance > previousBalance) return currentBalance;
       }
       return previousBalance;
     },
@@ -603,6 +586,7 @@ const Earn = () => {
 
     setMessage(null);
 
+<<<<<<< HEAD
     setMonetagElapsed(0);
 
     setMonetagPaused(false);
@@ -619,6 +603,9 @@ const Earn = () => {
 
 
 
+=======
+    const recaptchaToken = await executeRecaptcha().catch(() => null);
+>>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
     const clientNonce = crypto.randomUUID();
 
     const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -634,6 +621,24 @@ const Earn = () => {
 
 
     let prepareResponse: PrepareAdResponse;
+<<<<<<< HEAD
+=======
+    try {
+      prepareResponse = await prepareMutation.mutateAsync({ placement: PLACEMENT, recaptchaToken, clientNonce, timestamp, signature, hints });
+    } catch (error) {
+      setStatus("error");
+      if (error instanceof ApiError) {
+        const detail = (error.data as { detail?: string })?.detail ?? error.message;
+        setMessage(detail);
+        if (detail?.toLowerCase().includes("cooldown")) setCooldownUntil(Date.now() + policy.minInterval * 1000);
+      } else if (error instanceof Error) {
+        setMessage(error.message);
+      } else {
+        setMessage("Không thể chuẩn bị quảng cáo. Vui lòng thử lại.");
+      }
+      return;
+    }
+>>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
 
     try {
 
@@ -658,6 +663,7 @@ const Earn = () => {
     } catch (error) {
 
       setStatus("error");
+<<<<<<< HEAD
 
       if (error instanceof ApiError) {
 
@@ -683,6 +689,10 @@ const Earn = () => {
 
       return;
 
+=======
+      if (error instanceof Error) setMessage(error.message);
+      else setMessage("Không thể phát quảng cáo. Vui lòng thử lại.");
+>>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
     }
 
 
@@ -839,24 +849,226 @@ const Earn = () => {
 
   ]);
 
+<<<<<<< HEAD
 
+=======
+  // Reg Account For Coin state
+  type RegState = { open: boolean; minimized: boolean; status: "idle" | "pending" | "done" | "error"; msg?: string | null };
+  const REG_KEY = "lt4c_reg_account";
+  const [regOpen, setRegOpen] = useState<boolean>(false);
+  const [regMinimized, setRegMinimized] = useState<boolean>(false);
+  const [regStatus, setRegStatus] = useState<RegState["status"]>("idle");
+  const [regMsg, setRegMsg] = useState<string | null>(null);
+  const [regEmail, setRegEmail] = useState<string>("");
+  const [regPass, setRegPass] = useState<string>("");
+  const [regConfirm, setRegConfirm] = useState<boolean>(false);
+  const [regCopied, setRegCopied] = useState<boolean>(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(REG_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setRegOpen(Boolean(parsed.open));
+        setRegMinimized(Boolean(parsed.minimized));
+        setRegStatus((parsed.status as RegState["status"]) ?? "idle");
+        setRegMsg(parsed.msg ?? null);
+      }
+    } catch {}
+  }, []);
+
+  const persistReg = (next?: Partial<RegState>) => {
+    try {
+      const current: RegState = { open: regOpen, minimized: regMinimized, status: regStatus, msg: regMsg };
+      const merged = { ...current, ...(next ?? {}) };
+      localStorage.setItem(REG_KEY, JSON.stringify(merged));
+    } catch {}
+  };
+
+  useEffect(() => {
+    persistReg();
+  }, [regOpen, regMinimized, regStatus, regMsg]);
+
+  const onRegStart = useCallback(async () => {
+    setRegStatus("pending");
+    setRegMsg("we are confirming\nplease wait ...\nand check your mailbox to confirm if there is a confirmation email");
+    persistReg({ open: true, minimized: false, status: "pending", msg: "..." });
+    try {
+      const { registerWorkerTokenForCoin } = await import("@/lib/api-client");
+      const resp = await registerWorkerTokenForCoin({ email: regEmail, password: regPass, confirm: regConfirm });
+      if (resp?.ok) {
+        setRegStatus("done");
+        setRegMsg("Done\nthank you so much\nadded 15 coin");
+        refresh();
+        refetchWallet();
+      } else {
+        setRegStatus("error");
+        setRegMsg("Request failed");
+      }
+    } catch (e: any) {
+      setRegStatus("error");
+      if (e?.status === 409) setRegMsg("This email already exists (duplicate)");
+      else if (e?.data?.detail) setRegMsg(String(e.data.detail));
+      else setRegMsg(e?.message ?? "Request failed");
+    }
+  }, [regEmail, regPass, regConfirm, refresh, refetchWallet]);
+>>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold">Xem quảng cáo nhận thưởng</h1>
         <p className="text-muted-foreground">
-          Xem quảng cáo 30 giây để nhận 5 xu. Phần thưởng chỉ được cộng khi xác minh thành công từ máy chủ.
+          Xem quảng cáo 30 giây để nhận 5 xu. Phần thưởng chỉ được cộng khi máy chủ xác minh thành công.
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-        <Card className="glass-card">
+      <div className="grid gap-6 w-full">
+        {/* Reg Account For Coin card */}
+        <Card className="glass-card h-fit w-full">
+          <CardHeader className="py-3">
+            <CardTitle className="text-base font-semibold">Reg Account For Coin</CardTitle>
+            <CardDescription className="text-sm">Tạo tài khoản mới để nhận +15 xu</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Button
+              className="w-full h-11 text-base"
+              variant="secondary"
+              onClick={() => {
+                setRegOpen(true);
+                setRegMinimized(false);
+                persistReg({ open: true, minimized: false });
+              }}
+            >
+              <MoreHorizontal className="mr-2 h-4 w-4" /> More
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Floating minimized indicator */}
+        {regMinimized && regStatus === "pending" && (
+          <div className="fixed bottom-4 right-4 z-50">
+            <Button
+              onClick={() => {
+                setRegMinimized(false);
+                setRegOpen(true);
+              }}
+              variant="secondary"
+              className="rounded-full shadow-lg px-4 py-2 text-sm"
+            >
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirming...
+            </Button>
+          </div>
+        )}
+
+        {/* Dialog */}
+        <Dialog
+          open={regOpen}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              if (regStatus === "pending") {
+                setRegOpen(false);
+                setRegMinimized(true);
+                persistReg({ open: false, minimized: true });
+              } else {
+                setRegOpen(false);
+                setRegMinimized(false);
+                persistReg({ open: false, minimized: false });
+              }
+            } else {
+              setRegOpen(true);
+              persistReg({ open: true });
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[720px] md:max-w-[820px]">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold tracking-tight">How ?</DialogTitle>
+            </DialogHeader>
+            {regStatus === "idle" && (
+              <div className="space-y-6 text-base leading-relaxed">
+                <ol className="list-decimal pl-6 space-y-3">
+                  <li>
+                    Step 1: Go to website
+                    <button
+                      className="ml-2 underline font-medium relative"
+                      title="Click to copy"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(
+                          "https://learn.nvidia.com/join?auth=login&redirectPath=/my-learning",
+                        );
+                        setRegCopied(true);
+                        setTimeout(() => setRegCopied(false), 1500);
+                      }}
+                    >
+                      learn.nvidia.com/join?auth=login&redirectPath=/my-learning
+                    </button>
+                    <span className="ml-2 text-xs text-emerald-500 align-middle">{regCopied ? "Copied" : ""}</span>
+                  </li>
+                  <li>Step 2: Create a new account with an email you don't use (like hotmail, gmail, etc)</li>
+                  <li>Step 3: Go back and input your account here:</li>
+                </ol>
+                <div className="space-y-3">
+                  <Input placeholder="Mail" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} className="h-11 text-base" />
+                  <Input placeholder="Pass" type="password" value={regPass} onChange={(e) => setRegPass(e.target.value)} className="h-11 text-base" />
+                  <div className="flex items-center space-x-3">
+                    <Checkbox id="confirm" checked={regConfirm} onCheckedChange={(v) => setRegConfirm(Boolean(v))} />
+                    <label htmlFor="confirm" className="text-sm md:text-base">
+                      Confirm that this account is not your official account for security reasons
+                    </label>
+                  </div>
+                </div>
+                <div className="flex items-center justify-center gap-3">
+                  <Button className="h-11 px-6 text-base" disabled={!regEmail || !regPass || !regConfirm} onClick={onRegStart}>
+                    Done
+                  </Button>
+                </div>
+              </div>
+            )}
+            {regStatus === "pending" && (
+              <div className="space-y-4 text-center">
+                <div className="flex items-start justify-between">
+                  <p className="whitespace-pre-line text-base md:text-lg font-medium text-left">
+                    we are confirming{"\n"}please wait ...{"\n"}and check your mailbox to confirm if there is a confirmation email
+                  </p>
+                  <Button aria-label="Minimize" title="Minimize" variant="ghost" size="icon" onClick={() => { setRegMinimized(true); setRegOpen(false); persistReg({ open: false, minimized: true }); }}>
+                    <Minimize2 className="h-5 w-5" />
+                  </Button>
+                </div>
+                <div className="flex items-center justify-center text-base text-muted-foreground">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...
+                </div>
+              </div>
+            )}
+            {regStatus === "done" && (
+              <div className="space-y-3 text-center">
+                <p className="text-2xl font-bold">Done</p>
+                <p className="text-base">thank you so much</p>
+                <p className="text-lg font-semibold text-emerald-500">added 15 coin</p>
+                <div className="flex justify-center gap-2">
+                  <Button className="h-10 px-6" onClick={() => { setRegOpen(false); setRegMinimized(false); setRegStatus("idle"); setRegMsg(null); persistReg({ open: false, minimized: false, status: "idle", msg: null }); }}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            )}
+            {regStatus === "error" && (
+              <div className="space-y-3 text-center">
+                <p className="text-base text-destructive">{regMsg ?? "Failed"}</p>
+                <div className="flex justify-center gap-2">
+                  <Button className="h-10 px-6" variant="secondary" onClick={() => { setRegStatus("idle"); setRegMsg(null); }}>
+                    Back
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <Card className="glass-card w-full">
           <CardHeader>
             <CardTitle>Nhận +5 xu</CardTitle>
-            <CardDescription>
-              Mỗi lượt xem hợp lệ sẽ được cộng xu sau khi xác minh.
-            </CardDescription>
+            <CardDescription>Mỗi lượt xem hợp lệ sẽ được cộng xu sau khi xác minh.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex items-center gap-4">
@@ -924,18 +1136,15 @@ const Earn = () => {
               >
                 {prepareMutation.isLoading || status === "loading" ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Đang chuẩn bị quảng cáo
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang chuẩn bị quảng cáo
                   </>
                 ) : status === "playing" ? (
                   <>
-                    <Play className="mr-2 h-4 w-4" />
-                    Quảng cáo đang chạy
+                    <Play className="mr-2 h-4 w-4" /> Quảng cáo đang chạy
                   </>
                 ) : (
                   <>
-                    <Play className="mr-2 h-4 w-4" />
-                    Xem quảng cáo (+{policy?.rewardPerView ?? 5} xu)
+                    <Play className="mr-2 h-4 w-4" /> Xem quảng cáo (+{policy?.rewardPerView ?? 5} xu)
                   </>
                 )}
               </Button>
@@ -960,8 +1169,8 @@ const Earn = () => {
                     {status === "idle" && "Sẵn sàng nhận thưởng"}
                     {status === "preparing" && "Đang chuẩn bị quảng cáo..."}
                     {status === "loading" && "Đang tải quảng cáo..."}
-                    {status === "playing" && "Quảng cáo đang phát, vui lòng xem đến hết để nhận thưởng."}
-                    {status === "verifying" && "Đang chờ xác minh phần thưởng..."}
+                    {status === "playing" && "Quảng cáo đang phát, vui lòng xem hết để nhận thưởng."}
+                    {status === "verifying" && "Đang xác minh phần thưởng..."}
                     {status === "success" && "Hoàn tất"}
                     {status === "error" && "Không thể hoàn thành lượt xem"}
                   </p>
@@ -970,6 +1179,7 @@ const Earn = () => {
               </div>
             </div>
 
+<<<<<<< HEAD
             {activeProvider === "monetag" && (
               <div className="space-y-2">
                 <Progress value={monetagProgress} />
@@ -1035,42 +1245,38 @@ const Earn = () => {
                   {policy.perDevice} lượt mỗi ngày.
                 </li>
                 {policy.priceFloor !== null && (
+=======
+            {/* Chính sách & Quota gộp trong Earn */}
+            <div className="pt-4 border-t border-border/40 space-y-2">
+              <p className="text-sm font-semibold">Chính sách & Quota</p>
+              {policy && (
+                <ul className="space-y-2">
+>>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
                   <li>
-                    <span className="font-medium">Giá sàn hiện tại:</span> CPM ≥ {policy.priceFloor}
+                    <span className="font-medium">Thưởng mỗi lượt:</span> {policy.rewardPerView} xu (xem tối thiểu {policy.requiredDuration}s)
                   </li>
-                )}
-              </ul>
-            )}
-            {!isLoadingPolicy && !policy && (
-              <div className="flex items-center gap-2 text-destructive">
-                <AlertCircle className="h-4 w-4" />
-                Không thể tải cấu hình thưởng.{" "}
-                <button type="button" onClick={() => refetchPolicy()} className="underline">
-                  Thử lại
-                </button>
-              </div>
-            )}
-            <div className="pt-4 border-t border-border/40 space-y-1">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Thống kê hệ thống</p>
-              <p className="text-sm">
-                Tỷ lệ lấp đầy:{" "}
-                {metricsSnapshot.prepareOk
-                  ? `${Math.round((metricsSnapshot.ssvSuccess / metricsSnapshot.prepareOk) * 100)}%`
-                  : "--"}
-              </p>
-              <p className="text-sm">
-                Xác minh SSV thành công: {metricsSnapshot.ssvSuccess} /{" "}
-                {metricsSnapshot.ssvSuccess +
-                  metricsSnapshot.ssvInvalid +
-                  metricsSnapshot.ssvError +
-                  metricsSnapshot.ssvDuplicate}
-              </p>
-              <p className="text-sm">
-                Tổng xu đã thưởng: {metricsSnapshot.rewardCoins}
-              </p>
-              <p className="text-sm">
-                Tỷ lệ lỗi: {(metricsSnapshot.failureRatio * 100).toFixed(1)}%
-              </p>
+                  <li>
+                    <span className="font-medium">Thời gian chờ:</span> {formatSeconds(policy.minInterval)} giữa các lượt trên cùng thiết bị.
+                  </li>
+                  <li>
+                    <span className="font-medium">Giới hạn theo người dùng:</span> {policy.effectivePerDay}/{policy.perDay} lượt mỗi ngày.
+                  </li>
+                  <li>
+                    <span className="font-medium">Giới hạn theo thiết bị:</span> {policy.perDevice} lượt mỗi ngày.
+                  </li>
+                  {policy.priceFloor !== null && (
+                    <li>
+                      <span className="font-medium">Giá sàn hiện tại:</span> CPM {policy.priceFloor}
+                    </li>
+                  )}
+                </ul>
+              )}
+              {!isLoadingPolicy && !policy && (
+                <div className="flex items-center gap-2 text-destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  Không thể tải cấu hình thưởng. <button type="button" onClick={() => refetchPolicy()} className="underline">Thử lại</button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
