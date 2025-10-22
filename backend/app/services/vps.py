@@ -118,13 +118,10 @@ class VpsService:
                 detail="No worker available for product",
             )
 
-        # Check token availability on chosen worker before any deduction
-        try:
-            tokens_left = await worker_client.token_left(worker=worker)
-        except HTTPException:
-            # surface as service unavailable to allow fallback/retry later
-            raise
-        if tokens_left <= 0:
+        # Check token availability on chosen worker before any deduction.
+        # Only block when an explicit 0 is reported. Unknown (-1) or positive continues.
+        tokens_left = await worker_client.token_left(worker=worker)
+        if tokens_left == 0:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Worker has no available tokens",

@@ -166,17 +166,17 @@ class WorkerClient:
             try:
                 response = await client.get(url)
                 response.raise_for_status()
-            except httpx.HTTPError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="Worker tokenleft check failed",
-                ) from exc
-        try:
-            payload: Any = response.json()
-            total = int((payload or {}).get("totalSlots", 0))
-        except Exception:
-            total = 0
-        return max(total, 0)
+                try:
+                    payload: Any = response.json()
+                    total = int((payload or {}).get("totalSlots", 0))
+                except Exception:
+                    total = -1
+            except httpx.HTTPError:
+                # If the worker is unreachable or the endpoint errors, fall back to
+                # "unknown" so callers can decide whether to block. We return -1
+                # to signal unknown, and only an explicit 0 should block usage.
+                total = -1
+        return total
 
     async def health(self, *, worker: Worker | None = None) -> dict[str, Any]:
         """Check worker health endpoint."""
