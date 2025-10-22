@@ -1,7 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertCircle, CheckCircle2, Loader2, Play, ShieldAlert, MoreHorizontal, Minimize2 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  Play,
+  ShieldAlert,
+  MoreHorizontal,
+  Minimize2,
+} from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -27,8 +41,14 @@ import type {
 declare global {
   interface Window {
     turnstile?: {
-      render?: (container: HTMLElement | string, options: Record<string, unknown>) => unknown;
-      execute: (siteKey: string, options?: { action?: string; cData?: string }) => Promise<string>;
+      render?: (
+        container: HTMLElement | string,
+        options: Record<string, unknown>,
+      ) => unknown;
+      execute: (
+        siteKey: string,
+        options?: { action?: string; cData?: string },
+      ) => Promise<string>;
     };
     google?: any;
     monetag?: {
@@ -59,7 +79,8 @@ const ensureTurnstile = async (): Promise<void> => {
       script.src = `https://challenges.cloudflare.com/turnstile/v0/api.js?render=${TURNSTILE_SITE_KEY}`;
       script.async = true;
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Failed to load Cloudflare Turnstile script"));
+      script.onerror = () =>
+        reject(new Error("Failed to load Cloudflare Turnstile script"));
       document.head.appendChild(script);
     });
   }
@@ -67,7 +88,8 @@ const ensureTurnstile = async (): Promise<void> => {
 };
 
 const ensureImaSdk = async (): Promise<void> => {
-  if (typeof window === "undefined") throw new Error("IMA SDK requires browser environment");
+  if (typeof window === "undefined")
+    throw new Error("IMA SDK requires browser environment");
   if (window.google?.ima) return;
   if (!imaLoader) {
     imaLoader = new Promise((resolve, reject) => {
@@ -84,9 +106,9 @@ const ensureImaSdk = async (): Promise<void> => {
 
 const ensureMonetagScript = async (scriptUrl: string): Promise<void> => {
   if (!scriptUrl) {
-    throw new Error('Monetag script URL missing');
+    throw new Error("Monetag script URL missing");
   }
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     return;
   }
   if (document.querySelector(`script[data-monetag-src="${scriptUrl}"]`)) {
@@ -95,12 +117,12 @@ const ensureMonetagScript = async (scriptUrl: string): Promise<void> => {
   let loader = monetagLoaders.get(scriptUrl);
   if (!loader) {
     loader = new Promise<void>((resolve, reject) => {
-      const script = document.createElement('script');
+      const script = document.createElement("script");
       script.src = scriptUrl;
       script.async = true;
       (script as HTMLScriptElement).dataset.monetagSrc = scriptUrl;
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Failed to load Monetag script'));
+      script.onerror = () => reject(new Error("Failed to load Monetag script"));
       document.head.appendChild(script);
     });
     monetagLoaders.set(scriptUrl, loader);
@@ -112,26 +134,26 @@ const showMonetagAd = (zoneId: string, container: HTMLElement | null) => {
   if (!container) {
     return;
   }
-  container.innerHTML = '';
+  container.innerHTML = "";
   try {
     if (window.monetag?.display) {
       window.monetag.display(zoneId, { container });
       return;
     }
   } catch (error) {
-    console.warn('Monetag display() failed', error);
+    console.warn("Monetag display() failed", error);
   }
   if (window.monetag?.run) {
     try {
       window.monetag.run(zoneId);
       return;
     } catch (error) {
-      console.warn('Monetag run() failed', error);
+      console.warn("Monetag run() failed", error);
     }
   }
-  const fallback = document.createElement('div');
-  fallback.className = 'monetag-zone';
-  fallback.setAttribute('data-zone', zoneId);
+  const fallback = document.createElement("div");
+  fallback.className = "monetag-zone";
+  fallback.setAttribute("data-zone", zoneId);
   container.appendChild(fallback);
 };
 
@@ -153,30 +175,53 @@ const signPrepareRequest = async (
   timestamp: string,
   placement: string,
 ): Promise<string | null> => {
-  if (!CLIENT_SIGNING_KEY || typeof window === "undefined" || !window.crypto?.subtle) return null;
+  if (
+    !CLIENT_SIGNING_KEY ||
+    typeof window === "undefined" ||
+    !window.crypto?.subtle
+  )
+    return null;
   const encoder = new TextEncoder();
   const keyMaterial = encoder.encode(CLIENT_SIGNING_KEY);
-  const cryptoKey = await window.crypto.subtle.importKey("raw", keyMaterial, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const payload = encoder.encode(`${userId}|${clientNonce}|${timestamp}|${placement}`);
+  const cryptoKey = await window.crypto.subtle.importKey(
+    "raw",
+    keyMaterial,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const payload = encoder.encode(
+    `${userId}|${clientNonce}|${timestamp}|${placement}`,
+  );
   const buffer = await window.crypto.subtle.sign("HMAC", cryptoKey, payload);
-  return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 };
 
 const collectClientHints = (): Record<string, string> => {
   if (typeof navigator === "undefined") return {};
   const hints: Record<string, string> = { ua: navigator.userAgent };
-  const uaData = (navigator as unknown as { userAgentData?: any }).userAgentData;
+  const uaData = (navigator as unknown as { userAgentData?: any })
+    .userAgentData;
   if (uaData) {
     hints.platform = uaData.platform ?? "";
     hints.mobile = String(uaData.mobile ?? false);
-    const brands = uaData.brands ?? uaData.getHighEntropyValues?.(["model", "platformVersion"]);
+    const brands =
+      uaData.brands ??
+      uaData.getHighEntropyValues?.(["model", "platformVersion"]);
     if (Array.isArray(brands)) {
-      hints.brands = brands.map((it: { brand?: string; version?: string }) => `${it.brand ?? ""}:${it.version ?? ""}`).join("|");
+      hints.brands = brands
+        .map(
+          (it: { brand?: string; version?: string }) =>
+            `${it.brand ?? ""}:${it.version ?? ""}`,
+        )
+        .join("|");
     }
   }
   try {
     hints.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
-  } catch { }
+  } catch {}
   return hints;
 };
 
@@ -199,7 +244,14 @@ const providerDisplayName = (provider: string): string => {
   }
 };
 
-type EarnStatus = "idle" | "preparing" | "loading" | "playing" | "verifying" | "success" | "error";
+type EarnStatus =
+  | "idle"
+  | "preparing"
+  | "loading"
+  | "playing"
+  | "verifying"
+  | "success"
+  | "error";
 
 const initialMetrics: RewardMetricsSummary = {
   prepareOk: 0,
@@ -221,7 +273,8 @@ const Earn = () => {
   const [status, setStatus] = useState<EarnStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
-  const [metricsSnapshot, setMetricsSnapshot] = useState<RewardMetricsSummary>(initialMetrics);
+  const [metricsSnapshot, setMetricsSnapshot] =
+    useState<RewardMetricsSummary>(initialMetrics);
   const [selectedProvider, setSelectedProvider] = useState<string>("monetag");
   const [activeProvider, setActiveProvider] = useState<string>("monetag");
   const [monetagElapsed, setMonetagElapsed] = useState<number>(0);
@@ -231,7 +284,11 @@ const Earn = () => {
   const monetagActiveRef = useRef<boolean>(false);
   const monetagCancelRef = useRef<((reason: Error) => void) | null>(null);
 
-  const { data: policy, isLoading: isLoadingPolicy, refetch: refetchPolicy } = useQuery<RewardPolicy>({
+  const {
+    data: policy,
+    isLoading: isLoadingPolicy,
+    refetch: refetchPolicy,
+  } = useQuery<RewardPolicy>({
     queryKey: ["ads-policy"],
     queryFn: fetchRewardPolicy,
     staleTime: 60_000,
@@ -255,17 +312,26 @@ const Earn = () => {
   });
   const refetchMetrics = metricsQuery.refetch;
   const providerOptions = useMemo(() => {
-    const rawEntries = Object.entries(policy?.providers ?? {}).filter(([, cfg]) => cfg?.enabled) as Array<
-      [string, RewardProviderConfig | undefined]
-    >;
+    const rawEntries = Object.entries(policy?.providers ?? {}).filter(
+      ([, cfg]) => cfg?.enabled,
+    ) as Array<[string, RewardProviderConfig | undefined]>;
     if (rawEntries.length > 0) {
       return rawEntries;
     }
-    return [["monetag", (policy?.providers?.monetag as RewardProviderConfig | undefined) ?? undefined]];
+    return [
+      [
+        "monetag",
+        (policy?.providers?.monetag as RewardProviderConfig | undefined) ??
+          undefined,
+      ],
+    ];
   }, [policy]);
   const requiredDuration = policy?.requiredDuration ?? 30;
   const minIntervalSeconds = policy?.minInterval ?? 30;
-  const monetagProgress = requiredDuration > 0 ? Math.min(100, (monetagElapsed / requiredDuration) * 100) : 0;
+  const monetagProgress =
+    requiredDuration > 0
+      ? Math.min(100, (monetagElapsed / requiredDuration) * 100)
+      : 0;
 
   useEffect(() => {
     if (!policy) {
@@ -278,9 +344,15 @@ const Earn = () => {
       return;
     }
     const preferred = (policy.defaultProvider ?? "monetag").toLowerCase();
-    const fallback = enabledKeys.includes(preferred) ? preferred : enabledKeys[0];
-    setSelectedProvider((current) => (enabledKeys.includes(current) ? current : fallback));
-    setActiveProvider((current) => (enabledKeys.includes(current) ? current : fallback));
+    const fallback = enabledKeys.includes(preferred)
+      ? preferred
+      : enabledKeys[0];
+    setSelectedProvider((current) =>
+      enabledKeys.includes(current) ? current : fallback,
+    );
+    setActiveProvider((current) =>
+      enabledKeys.includes(current) ? current : fallback,
+    );
   }, [policy, providerOptions]);
 
   const prepareMutation = useMutation(prepareRewardedAd);
@@ -289,7 +361,9 @@ const Earn = () => {
     if (!["idle", "success", "error"].includes(status)) {
       return;
     }
-    setActiveProvider((current) => (current === selectedProvider ? current : selectedProvider));
+    setActiveProvider((current) =>
+      current === selectedProvider ? current : selectedProvider,
+    );
   }, [selectedProvider, status]);
 
   const cooldownRemaining = useMemo(() => {
@@ -398,65 +472,98 @@ const Earn = () => {
     [stopMonetagWatcher],
   );
 
-  const runImaAd = useCallback(
-    async (adTagUrl: string) => {
-      await ensureImaSdk();
-      const google = window.google;
-      const videoElement = videoRef.current;
-      const containerElement = adContainerRef.current;
-      if (!google?.ima || !videoElement || !containerElement) {
-        throw new Error("IMA SDK is not ready");
-      }
+  const runImaAd = useCallback(async (adTagUrl: string) => {
+    await ensureImaSdk();
+    const google = window.google;
+    const videoElement = videoRef.current;
+    const containerElement = adContainerRef.current;
+    if (!google?.ima || !videoElement || !containerElement) {
+      throw new Error("IMA SDK is not ready");
+    }
 
+    return new Promise<void>((resolve, reject) => {
+      const adDisplayContainer = new google.ima.AdDisplayContainer(
+        containerElement,
+        videoElement,
+      );
+      try {
+        adDisplayContainer.initialize();
+      } catch {}
 
-      return new Promise<void>((resolve, reject) => {
-        const adDisplayContainer = new google.ima.AdDisplayContainer(containerElement, videoElement);
-        try {
-          adDisplayContainer.initialize();
-        } catch { }
-
-        const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
-        adsLoader.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, (event: any) => {
+      const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+      adsLoader.addEventListener(
+        google.ima.AdErrorEvent.Type.AD_ERROR,
+        (event: any) => {
           adsLoader.destroy();
-          reject(new Error(event.getError()?.toString() ?? "IMA playback error"));
-        });
+          reject(
+            new Error(event.getError()?.toString() ?? "IMA playback error"),
+          );
+        },
+      );
 
-        adsLoader.addEventListener(google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, (event: any) => {
+      adsLoader.addEventListener(
+        google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+        (event: any) => {
           try {
             const adsManager = event.getAdsManager(videoElement);
-            adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, () => videoElement.pause());
-            adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () => setStatus("playing"));
-            adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () => resolve());
-            adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, () => resolve());
-            adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, (err: any) => {
-              reject(new Error(err.getError()?.toString() ?? "Ad playback error"));
-            });
-            adsManager.init(containerElement.clientWidth || 640, containerElement.clientHeight || 360, google.ima.ViewMode.NORMAL);
+            adsManager.addEventListener(
+              google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED,
+              () => videoElement.pause(),
+            );
+            adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () =>
+              setStatus("playing"),
+            );
+            adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () =>
+              resolve(),
+            );
+            adsManager.addEventListener(
+              google.ima.AdEvent.Type.ALL_ADS_COMPLETED,
+              () => resolve(),
+            );
+            adsManager.addEventListener(
+              google.ima.AdErrorEvent.Type.AD_ERROR,
+              (err: any) => {
+                reject(
+                  new Error(err.getError()?.toString() ?? "Ad playback error"),
+                );
+              },
+            );
+            adsManager.init(
+              containerElement.clientWidth || 640,
+              containerElement.clientHeight || 360,
+              google.ima.ViewMode.NORMAL,
+            );
             adsManager.start();
           } catch (error) {
             reject(error instanceof Error ? error : new Error(String(error)));
           }
-        });
+        },
+      );
 
-        const request = new google.ima.AdsRequest();
-        request.adTagUrl = adTagUrl;
-        request.linearAdSlotWidth = containerElement.clientWidth || 640;
-        request.linearAdSlotHeight = containerElement.clientHeight || 360;
-        request.nonLinearAdSlotWidth = containerElement.clientWidth || 640;
-        request.nonLinearAdSlotHeight = (containerElement.clientHeight || 360) / 3;
-        request.setAdWillAutoPlay(true);
-        request.setAdWillPlayMuted(false);
+      const request = new google.ima.AdsRequest();
+      request.adTagUrl = adTagUrl;
+      request.linearAdSlotWidth = containerElement.clientWidth || 640;
+      request.linearAdSlotHeight = containerElement.clientHeight || 360;
+      request.nonLinearAdSlotWidth = containerElement.clientWidth || 640;
+      request.nonLinearAdSlotHeight =
+        (containerElement.clientHeight || 360) / 3;
+      request.setAdWillAutoPlay(true);
+      request.setAdWillPlayMuted(false);
 
-        try {
-          adsLoader.requestAds(request);
-        } catch (error) {
-          reject(error instanceof Error ? error : new Error(String(error)));
-        }
-      });
-    }, []);
+      try {
+        adsLoader.requestAds(request);
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }, []);
 
   const runMonetagFlow = useCallback(
-    async (session: PrepareAdResponse, requiredSeconds: number, minInterval: number) => {
+    async (
+      session: PrepareAdResponse,
+      requiredSeconds: number,
+      minInterval: number,
+    ) => {
       if (!session.ticket || !session.zoneId || !session.scriptUrl) {
         throw new Error("Monetag configuration is incomplete");
       }
@@ -501,7 +608,13 @@ const Earn = () => {
         stopMonetagWatcher();
       }
     },
-    [waitForMonetagDuration, refresh, refetchWallet, refetchMetrics, stopMonetagWatcher],
+    [
+      waitForMonetagDuration,
+      refresh,
+      refetchWallet,
+      refetchMetrics,
+      stopMonetagWatcher,
+    ],
   );
 
   const waitForWalletUpdate = useCallback(
@@ -518,34 +631,27 @@ const Earn = () => {
   );
 
   const handleWatchAd = useCallback(async () => {
-
     if (!profile) {
-
       setMessage("Please sign in to earn rewards.");
 
       return;
-
     }
 
     if (!policy) {
-
       setMessage("Reward policy is loading. Please try again shortly.");
 
       return;
-
     }
 
     if (cooldownUntil && cooldownUntil > Date.now()) {
-
       setStatus("error");
 
-      setMessage(`You're still on cooldown for ${formatSeconds(cooldownRemaining)}.`);
+      setMessage(
+        `You're still on cooldown for ${formatSeconds(cooldownRemaining)}.`,
+      );
 
       return;
-
     }
-
-
 
     setStatus("preparing");
 
@@ -555,40 +661,37 @@ const Earn = () => {
 
     setMonetagPaused(false);
 
-
-
     const turnstileToken = await executeTurnstile().catch((error) => {
-
       console.warn("Turnstile verification failed", error);
 
       return null;
-
     });
-
-
-
 
     const clientNonce = crypto.randomUUID();
 
     const timestamp = Math.floor(Date.now() / 1000).toString();
 
-    const signature = await signPrepareRequest(profile.id, clientNonce, timestamp, PLACEMENT);
+    const signature = await signPrepareRequest(
+      profile.id,
+      clientNonce,
+      timestamp,
+      PLACEMENT,
+    );
 
     const hints = collectClientHints();
 
-    const providerChoice = (selectedProvider || policy.defaultProvider || "monetag").toLowerCase();
+    const providerChoice = (
+      selectedProvider ||
+      policy.defaultProvider ||
+      "monetag"
+    ).toLowerCase();
 
     const startingBalance = walletBalance;
 
-
-
     let prepareResponse: PrepareAdResponse;
 
-
     try {
-
       prepareResponse = await prepareMutation.mutateAsync({
-
         placement: PLACEMENT,
 
         provider: providerChoice,
@@ -602,84 +705,60 @@ const Earn = () => {
         signature,
 
         hints,
-
       });
-
     } catch (error) {
-
       setStatus("error");
 
       if (error instanceof ApiError) {
-
-        const detail = (error.data as { detail?: string })?.detail ?? error.message;
+        const detail =
+          (error.data as { detail?: string })?.detail ?? error.message;
 
         setMessage(detail);
 
         if (detail?.toLowerCase().includes("cooldown")) {
-
           setCooldownUntil(Date.now() + minIntervalSeconds * 1000);
-
         }
-
       } else if (error instanceof Error) {
-
         setMessage(error.message);
-
       } else {
-
         setMessage("Unable to prepare the ad. Please try again.");
-
       }
 
       return;
-
-
     }
 
-
-
-    const effectiveProvider = (prepareResponse.provider ?? providerChoice).toLowerCase();
+    const effectiveProvider = (
+      prepareResponse.provider ?? providerChoice
+    ).toLowerCase();
 
     setActiveProvider(effectiveProvider);
 
-
-
     if (effectiveProvider === "monetag") {
-
       try {
-
-        await runMonetagFlow(prepareResponse, requiredDuration, minIntervalSeconds);
-
+        await runMonetagFlow(
+          prepareResponse,
+          requiredDuration,
+          minIntervalSeconds,
+        );
       } catch (error) {
-
         setStatus("error");
 
         if (error instanceof Error) {
-
           setMessage(error.message);
-
         } else {
-
           setMessage("Failed to complete the Monetag session.");
-
         }
 
         setMonetagElapsed(0);
 
         setMonetagPaused(false);
-
       }
 
       return;
-
     }
 
-
-
     if (effectiveProvider === "gma") {
-
       try {
-
         setStatus("loading");
 
         setMessage(null);
@@ -691,9 +770,7 @@ const Earn = () => {
         setMonetagPaused(false);
 
         if (!prepareResponse.adTagUrl) {
-
           throw new Error("Missing ad tag URL for Google Ads playback.");
-
         }
 
         await runImaAd(prepareResponse.adTagUrl);
@@ -703,7 +780,6 @@ const Earn = () => {
         const newBalance = await waitForWalletUpdate(startingBalance);
 
         if (newBalance > startingBalance) {
-
           const gained = newBalance - startingBalance;
 
           setStatus("success");
@@ -717,45 +793,30 @@ const Earn = () => {
           refetchWallet();
 
           refetchMetrics();
-
         } else {
-
           setStatus("success");
 
           setMessage("Ad completed. Your balance will refresh shortly.");
 
           setCooldownUntil(Date.now() + minIntervalSeconds * 1000);
-
         }
-
       } catch (error) {
-
         setStatus("error");
 
         if (error instanceof Error) {
-
           setMessage(error.message);
-
         } else {
-
           setMessage("Failed to play the advertisement. Please try again.");
-
         }
-
       }
 
       return;
-
     }
-
-
 
     setStatus("error");
 
     setMessage("Unsupported ad provider selected.");
-
   }, [
-
     profile,
 
     policy,
@@ -787,18 +848,15 @@ const Earn = () => {
     refetchWallet,
 
     refetchMetrics,
-
   ]);
-
-
-
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold">Xem quảng cáo nhận thưởng</h1>
         <p className="text-muted-foreground">
-          Xem quảng cáo 30 giây để nhận 5 xu. Phần thưởng chỉ được cộng khi máy chủ xác minh thành công.
+          Xem quảng cáo 30 giây để nhận 5 xu. Phần thưởng chỉ được cộng khi máy
+          chủ xác minh thành công.
         </p>
       </div>
 
@@ -806,8 +864,12 @@ const Earn = () => {
         {/* Reg Account For Coin card */}
         <Card className="glass-card h-fit w-full">
           <CardHeader className="py-3">
-            <CardTitle className="text-base font-semibold">Reg Account For Coin</CardTitle>
-            <CardDescription className="text-sm">Tạo tài khoản mới để nhận +15 xu</CardDescription>
+            <CardTitle className="text-base font-semibold">
+              Reg Account For Coin
+            </CardTitle>
+            <CardDescription className="text-sm">
+              Tạo tài khoản mới để nhận +15 xu
+            </CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
             <Button
@@ -862,7 +924,9 @@ const Earn = () => {
         >
           <DialogContent className="sm:max-w-[720px] md:max-w-[820px]">
             <DialogHeader>
-              <DialogTitle className="text-xl font-bold tracking-tight">How ?</DialogTitle>
+              <DialogTitle className="text-xl font-bold tracking-tight">
+                How ?
+              </DialogTitle>
             </DialogHeader>
             {regStatus === "idle" && (
               <div className="space-y-6 text-base leading-relaxed">
@@ -882,23 +946,48 @@ const Earn = () => {
                     >
                       learn.nvidia.com/join?auth=login&redirectPath=/my-learning
                     </button>
-                    <span className="ml-2 text-xs text-emerald-500 align-middle">{regCopied ? "Copied" : ""}</span>
+                    <span className="ml-2 text-xs text-emerald-500 align-middle">
+                      {regCopied ? "Copied" : ""}
+                    </span>
                   </li>
-                  <li>Step 2: Create a new account with an email you don't use (like hotmail, gmail, etc)</li>
+                  <li>
+                    Step 2: Create a new account with an email you don't use
+                    (like hotmail, gmail, etc)
+                  </li>
                   <li>Step 3: Go back and input your account here:</li>
                 </ol>
                 <div className="space-y-3">
-                  <Input placeholder="Mail" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} className="h-11 text-base" />
-                  <Input placeholder="Pass" type="password" value={regPass} onChange={(e) => setRegPass(e.target.value)} className="h-11 text-base" />
+                  <Input
+                    placeholder="Mail"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    className="h-11 text-base"
+                  />
+                  <Input
+                    placeholder="Pass"
+                    type="password"
+                    value={regPass}
+                    onChange={(e) => setRegPass(e.target.value)}
+                    className="h-11 text-base"
+                  />
                   <div className="flex items-center space-x-3">
-                    <Checkbox id="confirm" checked={regConfirm} onCheckedChange={(v) => setRegConfirm(Boolean(v))} />
+                    <Checkbox
+                      id="confirm"
+                      checked={regConfirm}
+                      onCheckedChange={(v) => setRegConfirm(Boolean(v))}
+                    />
                     <label htmlFor="confirm" className="text-sm md:text-base">
-                      Confirm that this account is not your official account for security reasons
+                      Confirm that this account is not your official account for
+                      security reasons
                     </label>
                   </div>
                 </div>
                 <div className="flex items-center justify-center gap-3">
-                  <Button className="h-11 px-6 text-base" disabled={!regEmail || !regPass || !regConfirm} onClick={onRegStart}>
+                  <Button
+                    className="h-11 px-6 text-base"
+                    disabled={!regEmail || !regPass || !regConfirm}
+                    onClick={onRegStart}
+                  >
                     Done
                   </Button>
                 </div>
@@ -908,14 +997,26 @@ const Earn = () => {
               <div className="space-y-4 text-center">
                 <div className="flex items-start justify-between">
                   <p className="whitespace-pre-line text-base md:text-lg font-medium text-left">
-                    we are confirming{"\n"}please wait ...{"\n"}and check your mailbox to confirm if there is a confirmation email
+                    we are confirming{"\n"}please wait ...{"\n"}and check your
+                    mailbox to confirm if there is a confirmation email
                   </p>
-                  <Button aria-label="Minimize" title="Minimize" variant="ghost" size="icon" onClick={() => { setRegMinimized(true); setRegOpen(false); persistReg({ open: false, minimized: true }); }}>
+                  <Button
+                    aria-label="Minimize"
+                    title="Minimize"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setRegMinimized(true);
+                      setRegOpen(false);
+                      persistReg({ open: false, minimized: true });
+                    }}
+                  >
                     <Minimize2 className="h-5 w-5" />
                   </Button>
                 </div>
                 <div className="flex items-center justify-center text-base text-muted-foreground">
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />{" "}
+                  Processing...
                 </div>
               </div>
             )}
@@ -923,9 +1024,25 @@ const Earn = () => {
               <div className="space-y-3 text-center">
                 <p className="text-2xl font-bold">Done</p>
                 <p className="text-base">thank you so much</p>
-                <p className="text-lg font-semibold text-emerald-500">added 15 coin</p>
+                <p className="text-lg font-semibold text-emerald-500">
+                  added 15 coin
+                </p>
                 <div className="flex justify-center gap-2">
-                  <Button className="h-10 px-6" onClick={() => { setRegOpen(false); setRegMinimized(false); setRegStatus("idle"); setRegMsg(null); persistReg({ open: false, minimized: false, status: "idle", msg: null }); }}>
+                  <Button
+                    className="h-10 px-6"
+                    onClick={() => {
+                      setRegOpen(false);
+                      setRegMinimized(false);
+                      setRegStatus("idle");
+                      setRegMsg(null);
+                      persistReg({
+                        open: false,
+                        minimized: false,
+                        status: "idle",
+                        msg: null,
+                      });
+                    }}
+                  >
                     Close
                   </Button>
                 </div>
@@ -933,9 +1050,18 @@ const Earn = () => {
             )}
             {regStatus === "error" && (
               <div className="space-y-3 text-center">
-                <p className="text-base text-destructive">{regMsg ?? "Failed"}</p>
+                <p className="text-base text-destructive">
+                  {regMsg ?? "Failed"}
+                </p>
                 <div className="flex justify-center gap-2">
-                  <Button className="h-10 px-6" variant="secondary" onClick={() => { setRegStatus("idle"); setRegMsg(null); }}>
+                  <Button
+                    className="h-10 px-6"
+                    variant="secondary"
+                    onClick={() => {
+                      setRegStatus("idle");
+                      setRegMsg(null);
+                    }}
+                  >
                     Back
                   </Button>
                 </div>
@@ -947,18 +1073,24 @@ const Earn = () => {
         <Card className="glass-card w-full">
           <CardHeader>
             <CardTitle>Nhận +5 xu</CardTitle>
-            <CardDescription>Mỗi lượt xem hợp lệ sẽ được cộng xu sau khi xác minh.</CardDescription>
+            <CardDescription>
+              Mỗi lượt xem hợp lệ sẽ được cộng xu sau khi xác minh.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 rounded-lg border border-border/40 px-3 py-2">
-                <span className="text-sm text-muted-foreground">Số dư hiện tại</span>
+                <span className="text-sm text-muted-foreground">
+                  Số dư hiện tại
+                </span>
                 <Badge variant="secondary" className="text-base font-semibold">
                   {walletBalance} xu
                 </Badge>
               </div>
               <div className="flex items-center gap-2 rounded-lg border border-border/40 px-3 py-2">
-                <span className="text-sm text-muted-foreground">Thưởng mỗi lượt</span>
+                <span className="text-sm text-muted-foreground">
+                  Thưởng mỗi lượt
+                </span>
                 <Badge variant="outline">{policy?.rewardPerView ?? 5} xu</Badge>
               </div>
             </div>
@@ -976,8 +1108,11 @@ const Earn = () => {
                     return (
                       <div
                         key={value}
-                        className={`flex items-center gap-2 rounded-md border border-border/40 px-3 py-2 transition ring-offset-background ${selectedProvider === value ? "ring-1 ring-primary" : ""
-                          }`}
+                        className={`flex items-center gap-2 rounded-md border border-border/40 px-3 py-2 transition ring-offset-background ${
+                          selectedProvider === value
+                            ? "ring-1 ring-primary"
+                            : ""
+                        }`}
                       >
                         <RadioGroupItem id={id} value={value} />
                         <div className="flex flex-col">
@@ -990,7 +1125,9 @@ const Earn = () => {
                               : "Google IMA + server verification"}
                           </span>
                           {value === "monetag" && cfg?.zoneId && (
-                            <span className="text-xs text-muted-foreground">Zone {cfg.zoneId}</span>
+                            <span className="text-xs text-muted-foreground">
+                              Zone {cfg.zoneId}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1014,7 +1151,8 @@ const Earn = () => {
               >
                 {prepareMutation.isLoading || status === "loading" ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang chuẩn bị quảng cáo
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang chuẩn
+                    bị quảng cáo
                   </>
                 ) : status === "playing" ? (
                   <>
@@ -1022,13 +1160,15 @@ const Earn = () => {
                   </>
                 ) : (
                   <>
-                    <Play className="mr-2 h-4 w-4" /> Xem quảng cáo (+{policy?.rewardPerView ?? 5} xu)
+                    <Play className="mr-2 h-4 w-4" /> Xem quảng cáo (+
+                    {policy?.rewardPerView ?? 5} xu)
                   </>
                 )}
               </Button>
               {cooldownUntil && cooldownUntil > Date.now() && (
                 <div className="text-sm text-muted-foreground">
-                  Vui long doi {formatSeconds(cooldownRemaining)} truoc khi xem quang cao tiep theo.
+                  Vui long doi {formatSeconds(cooldownRemaining)} truoc khi xem
+                  quang cao tiep theo.
                 </div>
               )}
             </div>
@@ -1047,12 +1187,17 @@ const Earn = () => {
                     {status === "idle" && "Sẵn sàng nhận thưởng"}
                     {status === "preparing" && "Đang chuẩn bị quảng cáo..."}
                     {status === "loading" && "Đang tải quảng cáo..."}
-                    {status === "playing" && "Quảng cáo đang phát, vui lòng xem hết để nhận thưởng."}
+                    {status === "playing" &&
+                      "Quảng cáo đang phát, vui lòng xem hết để nhận thưởng."}
                     {status === "verifying" && "Đang xác minh phần thưởng..."}
                     {status === "success" && "Hoàn tất"}
                     {status === "error" && "Không thể hoàn thành lượt xem"}
                   </p>
-                  {message && <p className="text-sm text-muted-foreground mt-1">{message}</p>}
+                  {message && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {message}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1062,10 +1207,13 @@ const Earn = () => {
                 <Progress value={monetagProgress} />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>
-                    {Math.min(monetagElapsed, requiredDuration)}s / {requiredDuration}s
+                    {Math.min(monetagElapsed, requiredDuration)}s /{" "}
+                    {requiredDuration}s
                   </span>
                   {monetagPaused && (
-                    <span className="font-medium text-amber-500">Keep this tab visible</span>
+                    <span className="font-medium text-amber-500">
+                      Keep this tab visible
+                    </span>
                   )}
                 </div>
               </div>
@@ -1074,13 +1222,19 @@ const Earn = () => {
             <div className="relative w-full overflow-hidden rounded-lg border border-border/40 bg-black aspect-video">
               <div
                 ref={monetagContainerRef}
-                className={`absolute inset-0 flex h-full w-full items-center justify-center transition-opacity ${activeProvider === "monetag" ? "opacity-100" : "pointer-events-none opacity-0"
-                  }`}
+                className={`absolute inset-0 flex h-full w-full items-center justify-center transition-opacity ${
+                  activeProvider === "monetag"
+                    ? "opacity-100"
+                    : "pointer-events-none opacity-0"
+                }`}
               />
               <div
                 ref={adContainerRef}
-                className={`absolute inset-0 flex h-full w-full transition-opacity ${activeProvider === "gma" ? "opacity-100" : "pointer-events-none opacity-0"
-                  }`}
+                className={`absolute inset-0 flex h-full w-full transition-opacity ${
+                  activeProvider === "gma"
+                    ? "opacity-100"
+                    : "pointer-events-none opacity-0"
+                }`}
               >
                 <video
                   ref={videoRef}
@@ -1100,16 +1254,23 @@ const Earn = () => {
             <CardDescription>Cài đặt phần thưởng hiện tại</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            {isLoadingPolicy && <p className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải chính sách...</p>}
+            {isLoadingPolicy && (
+              <p className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Đang tải chính
+                sách...
+              </p>
+            )}
             {policy && (
               <ul className="space-y-2">
                 <li>
                   <span className="font-medium">Thuong moi luot:</span>{" "}
-                  {policy.rewardPerView} xu (xem toi thieu {policy.requiredDuration}s)
+                  {policy.rewardPerView} xu (xem toi thieu{" "}
+                  {policy.requiredDuration}s)
                 </li>
                 <li>
                   <span className="font-medium">Thoi gian cho:</span>{" "}
-                  {formatSeconds(policy.minInterval)} giua cac luot tren cung thiet bi.
+                  {formatSeconds(policy.minInterval)} giua cac luot tren cung
+                  thiet bi.
                 </li>
                 <li>
                   <span className="font-medium">Gioi han theo nguoi dung:</span>{" "}
@@ -1121,8 +1282,8 @@ const Earn = () => {
                 </li>
                 {policy.priceFloor !== null && (
                   <li>
-                    <span className="font-medium">Gia san hien tai:</span>{" "}
-                    CPM {policy.priceFloor}
+                    <span className="font-medium">Gia san hien tai:</span> CPM{" "}
+                    {policy.priceFloor}
                   </li>
                 )}
               </ul>
@@ -1130,13 +1291,20 @@ const Earn = () => {
             {!isLoadingPolicy && !policy && (
               <div className="flex items-center gap-2 text-destructive">
                 <AlertCircle className="h-4 w-4" />
-                Không thể tải cấu hình thưởng. <button type="button" onClick={() => refetchPolicy()} className="underline">Thử lại</button>
+                Không thể tải cấu hình thưởng.{" "}
+                <button
+                  type="button"
+                  onClick={() => refetchPolicy()}
+                  className="underline"
+                >
+                  Thử lại
+                </button>
               </div>
             )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
     </div>
-  </div>
   );
 };
 

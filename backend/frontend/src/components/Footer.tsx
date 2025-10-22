@@ -5,7 +5,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 export function Footer() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const version = "devStable v1.2.7";
+  const version = "devStable v1.2.67";
 
   // Fallback nếu project không có CSS var:
   // const leftPx = collapsed ? 64 : 256;
@@ -17,7 +17,7 @@ export function Footer() {
         "transition-[left] duration-200",
         collapsed
           ? "left-[var(--sidebar-width-icon)]" // khi thu gọn
-          : "left-[var(--sidebar-width)]",      // khi mở rộng
+          : "left-[var(--sidebar-width)]", // khi mở rộng
       ].join(" ")}
       // style={{ left: leftPx }} // dùng fallback px nếu cần
     >
