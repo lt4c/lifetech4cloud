@@ -10,6 +10,7 @@ import secrets
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from threading import Lock
 from typing import Any, Dict, Optional, Tuple
 from uuid import UUID
 
@@ -30,6 +31,12 @@ from app.models import AdReward, User, UserLimit
 from app.services.rate_limiter import RateLimiter
 from app.services.wallet import WalletService
 from app.settings import Settings, get_settings
+
+MONETAG_TICKET_PREFIX = "ads:monetag:ticket"
+MONETAG_LOCK_PREFIX = "ads:monetag:lock"
+_ticket_cache: Dict[str, tuple[str, float]] = {}
+_monetag_local_locks: Dict[str, float] = {}
+_monetag_locks_guard = Lock()
 
 try:
     from redis import Redis  # type: ignore
@@ -228,8 +235,9 @@ class PrepareContext:
     client_nonce: str
     timestamp: str
     signature: str
-    recaptcha_token: Optional[str]
+    turnstile_token: Optional[str]
     ip: str
+    provider: str
     user_agent: str
     client_hints: Dict[str, str]
     referer_path: str
@@ -288,7 +296,10 @@ class AdsService:
         self._enforce_route(ctx.referer_path)
         self._enforce_ip_policy(ctx.ip, ctx.asn)
         self._verify_client_signature(user_id=user.id, ctx=ctx, now=now)
-        self._verify_recaptcha(ctx, user_id=user.id)
+        self._verify_turnstile(ctx, user_id=user.id)
+
+        provider = self._normalize_provider(ctx.provider)
+        self._ensure_provider_enabled(provider)
 
         limits = self._fetch_limits_snapshot(user.id, ctx.device_hash, now.date())
         self._ensure_not_on_cooldown(limits, now)
@@ -298,14 +309,153 @@ class AdsService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid placement")
 
         nonce = self.nonce_manager.issue(user.id, ctx.device_hash, ctx.placement)
+        if provider == "monetag":
+            response = self._prepare_monetag(user, ctx, nonce)
+        else:
+            response = self._prepare_gma(user, ctx, nonce)
+        response.setdefault("deviceHash", ctx.device_hash)
+        response["provider"] = provider
+        return response
+
+    def _normalize_provider(self, provider: str | None) -> str:
+        value = (provider or self.settings.default_provider or "monetag").strip().lower()
+        if value in {"gma", "gam", "google"}:
+            return "gma"
+        if value == "monetag":
+            return "monetag"
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported provider")
+
+    def _ensure_provider_enabled(self, provider: str) -> None:
+        if provider == "gma" and not self.settings.enable_gma:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="GMA provider disabled")
+        if provider == "monetag" and not self.settings.enable_monetag:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Monetag provider disabled")
+
+    def _prepare_gma(self, user: User, ctx: PrepareContext, nonce: str) -> Dict[str, Any]:
         ad_tag_url = self._build_ad_tag_url(user.id, nonce, ctx.placement, ctx.device_hash)
-        rewarded_ads_prepare_total.labels(status="ok").inc()
+        rewarded_ads_prepare_total.labels(status="gma-ok").inc()
         return {
             "nonce": nonce,
             "adTagUrl": ad_tag_url,
             "expiresIn": self.nonce_manager.ttl_seconds,
             "priceFloor": self.settings.price_floor or 0,
         }
+
+    def _prepare_monetag(self, user: User, ctx: PrepareContext, nonce: str) -> Dict[str, Any]:
+        zone_id = self.settings.monetag_zone_id
+        script_url = self.settings.monetag_script_url
+        if not zone_id or not script_url:
+            rewarded_ads_prepare_total.labels(status="monetag-config").inc()
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Monetag configuration missing")
+        ticket, ttl = self._issue_monetag_ticket(
+            user_id=user.id, nonce=nonce, device_hash=ctx.device_hash, placement=ctx.placement
+        )
+        rewarded_ads_prepare_total.labels(status="monetag-ok").inc()
+        return {
+            "nonce": nonce,
+            "ticket": ticket,
+            "ticketExpiresIn": ttl,
+            "zoneId": zone_id,
+            "scriptUrl": script_url,
+        }
+
+    def _issue_monetag_ticket(self, *, user_id: UUID, nonce: str, device_hash: str, placement: str) -> tuple[str, int]:
+        secret = (self.settings.monetag_ticket_secret or self.settings.secret_key or "").strip()
+        if not secret:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Ticket secret unavailable")
+        ttl = self.settings.monetag_ticket_ttl
+        timestamp = int(time.time())
+        payload = f"{user_id}|{nonce}|{timestamp}"
+        digest = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        token = f"{timestamp}.{digest}"
+        record = json.dumps({"token": token, "device_hash": device_hash, "expires_at": timestamp + ttl, "placement": placement})
+        key = f"{MONETAG_TICKET_PREFIX}:{nonce}"
+        _ticket_cache[key] = (record, timestamp + ttl)
+        if self.redis is not None:
+            try:
+                self.redis.setex(key, ttl, record)
+            except Exception:  # pragma: no cover - best effort
+                logger.exception("Failed to persist Monetag ticket in Redis")
+        return token, ttl
+
+    def _consume_monetag_ticket(self, nonce: str) -> Dict[str, Any]:
+        key = f"{MONETAG_TICKET_PREFIX}:{nonce}"
+        data_str: Optional[str] = None
+        if self.redis is not None:
+            try:
+                getdel = getattr(self.redis, "getdel", None)
+                if callable(getdel):
+                    data_str = getdel(key)  # type: ignore[assignment]
+                else:
+                    data_str = self.redis.get(key)  # type: ignore[assignment]
+                    if data_str is not None:
+                        self.redis.delete(key)
+            except Exception:  # pragma: no cover - redis unavailable
+                logger.exception("Failed to read Monetag ticket from Redis")
+                data_str = None
+        cache_record = _ticket_cache.pop(key, None)
+        if data_str is None and cache_record is not None:
+            cached_value, expires_at = cache_record
+            if expires_at >= time.time():
+                data_str = cached_value
+        if isinstance(data_str, bytes):
+            data_str = data_str.decode("utf-8")
+        if data_str is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticket invalid or expired")
+        try:
+            data = json.loads(data_str)
+        except json.JSONDecodeError as exc:  # pragma: no cover - defensive
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticket invalid or expired") from exc
+        return data
+
+    def _validate_monetag_ticket(self, *, user_id: UUID, nonce: str, ticket: str, device_hash: str) -> Dict[str, Any]:
+        data = self._consume_monetag_ticket(nonce)
+        expected_token = data.get("token")
+        if not expected_token or expected_token != ticket:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticket invalid or expired")
+        try:
+            timestamp_str, digest = ticket.split(".", 1)
+            timestamp = int(timestamp_str)
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticket invalid or expired")
+        if time.time() - timestamp > self.settings.monetag_ticket_ttl:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticket expired")
+        expires_at = data.get("expires_at")
+        if isinstance(expires_at, (int, float)) and time.time() > float(expires_at):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticket expired")
+        secret = (self.settings.monetag_ticket_secret or self.settings.secret_key or "").strip()
+        payload = f"{user_id}|{nonce}|{timestamp}"
+        expected_digest = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        if digest != expected_digest:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticket invalid or expired")
+        stored_device_hash = data.get("device_hash")
+        if stored_device_hash and stored_device_hash != device_hash:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Device mismatch")
+        return data
+
+    def _acquire_monetag_nonce_lock(self, nonce: str) -> None:
+        key = f"{MONETAG_LOCK_PREFIX}:{nonce}"
+        if self.redis is not None:
+            try:
+                acquired = self.redis.set(key, "1", nx=True, ex=self.settings.monetag_ticket_ttl)
+            except Exception:  # pragma: no cover - redis issues fall back to in-memory guard
+                logger.exception("Failed to acquire Monetag nonce lock in Redis")
+            else:
+                if acquired:
+                    return
+                rewarded_ads_ssv_total.labels(status="monetag-duplicate").inc()
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Nonce already processed")
+
+        now_ts = time.time()
+        with _monetag_locks_guard:
+            stale = [item for item, expires_at in _monetag_local_locks.items() if expires_at <= now_ts]
+            for item in stale:
+                _monetag_local_locks.pop(item, None)
+            current_expires = _monetag_local_locks.get(nonce)
+            if current_expires and current_expires > now_ts:
+                rewarded_ads_ssv_total.labels(status="monetag-duplicate").inc()
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Nonce already processed")
+            _monetag_local_locks[nonce] = now_ts + self.settings.monetag_ticket_ttl
 
     def handle_ssv(self, payload: Dict[str, Any], *, ip: str) -> Dict[str, Any]:
         self.ssv_limiter.check(f"ip:{ip}")
@@ -316,6 +466,11 @@ class AdsService:
         duration = int(payload.get("duration") or payload.get("durationSec") or 0)
         signature = str(payload.get("sig") or payload.get("signature") or "").strip()
         network = str(payload.get("network") or payload.get("provider") or "gam").strip().lower() or "gam"
+        if network not in {"gam", "gma", "google"}:
+            rewarded_ads_ssv_total.labels(status="unsupported").inc()
+            self._register_failure()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported provider")
+        network = "gma"
         placement = str(payload.get("placement") or "").strip() or None
         device_hash = str(payload.get("device") or payload.get("deviceHash") or "").strip() or None
 
@@ -457,6 +612,78 @@ class AdsService:
 
         return {"ok": True, "added": amount, "balance": balance_info.balance}
 
+    def complete_monetag(
+        self,
+        user: User,
+        *,
+        nonce: str,
+        ticket: str,
+        duration_sec: int,
+        device_hash: str,
+    ) -> Dict[str, Any]:
+        if duration_sec < self.settings.required_duration:
+            rewarded_ads_ssv_total.labels(status="monetag-short").inc()
+            self._register_failure()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duration too short")
+
+        try:
+            ticket_data = self._validate_monetag_ticket(
+                user_id=user.id, nonce=nonce, ticket=ticket, device_hash=device_hash
+            )
+        except HTTPException:
+            self._register_failure()
+            raise
+
+        try:
+            self._acquire_monetag_nonce_lock(nonce)
+        except HTTPException:
+            self._register_failure()
+            raise
+
+        now = datetime.now(timezone.utc)
+        limits = self._lock_limits(user.id, device_hash, now.date())
+        try:
+            self._ensure_cap_available(limits, device_hash)
+            self._ensure_not_on_cooldown(limits, now)
+            self._ensure_unique_nonce(user.id, nonce)
+        except HTTPException:
+            self._register_failure()
+            raise
+
+        wallet_service = WalletService(self.db)
+        amount = self.settings.reward_amount
+        reward = AdReward(
+            user_id=user.id,
+            network="monetag",
+            event_id=nonce,
+            nonce=nonce,
+            reward_amount=amount,
+            duration_sec=duration_sec,
+            placement=ticket_data.get("placement"),
+            device_hash=device_hash,
+            meta={"ticket": ticket},
+        )
+        try:
+            with self.db.begin():
+                self.db.add(reward)
+                self.db.flush()
+                self._increment_limits(limits, now)
+                balance_info = wallet_service.adjust_balance(
+                    user,
+                    amount,
+                    entry_type="ads.reward",
+                    ref_id=reward.id,
+                    meta={"network": "monetag", "nonce": nonce},
+                )
+        except Exception:
+            self._register_failure()
+            raise
+
+        self._record_success_metrics(amount, duration_sec, "monetag", ticket_data.get("placement"))
+        rewarded_ads_ssv_total.labels(status="monetag-success").inc()
+        return {"ok": True, "added": amount, "balance": balance_info.balance}
+
+
     def _enforce_route(self, referer_path: str) -> None:
         if referer_path != "/earn":
             rewarded_ads_prepare_total.labels(status="invalid-route").inc()
@@ -504,46 +731,60 @@ class AdsService:
             rewarded_ads_prepare_total.labels(status="bad-signature").inc()
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid client signature")
 
-    def _verify_recaptcha(self, ctx: PrepareContext, *, user_id: UUID) -> None:
-        if not self.settings.recaptcha_project_id or not self.settings.recaptcha_api_key:
-            if not self.settings.allow_missing_recaptcha:
-                rewarded_ads_prepare_total.labels(status="recaptcha-missing").inc()
-                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="reCAPTCHA not configured")
-            logger.warning("reCAPTCHA verification skipped because configuration is missing.")
+    def _verify_turnstile(self, ctx: PrepareContext, *, user_id: UUID) -> None:
+        if not self.settings.turnstile_site_key or not self.settings.turnstile_secret_key:
+            if not self.settings.allow_missing_turnstile:
+                rewarded_ads_prepare_total.labels(status="turnstile-missing").inc()
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Turnstile not configured")
+            logger.warning("Cloudflare Turnstile verification skipped because configuration is missing.")
             return
-        if not ctx.recaptcha_token:
-            rewarded_ads_prepare_total.labels(status="recaptcha-failed").inc()
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="recaptcha_required")
+        if not ctx.turnstile_token:
+            rewarded_ads_prepare_total.labels(status="turnstile-failed").inc()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="turnstile_required")
 
-        url = (
-            f"https://recaptchaenterprise.googleapis.com/v1/projects/"
-            f"{self.settings.recaptcha_project_id}/assessments?key={self.settings.recaptcha_api_key}"
-        )
         payload = {
-            "event": {
-                "token": ctx.recaptcha_token,
-                "siteKey": self.settings.recaptcha_site_key,
-                "userAgent": ctx.user_agent,
-                "userIpAddress": ctx.ip,
-                "expectedAction": "ads_prepare",
-            }
+            "secret": self.settings.turnstile_secret_key,
+            "response": ctx.turnstile_token,
+            "remoteip": ctx.ip,
         }
         try:
-            response = httpx.post(url, json=payload, timeout=5.0)
+            response = httpx.post(
+                "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+                data=payload,
+                timeout=5.0,
+            )
             response.raise_for_status()
         except Exception as exc:
-            rewarded_ads_prepare_total.labels(status="recaptcha-error").inc()
-            logger.exception("Failed to verify reCAPTCHA token")
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="recaptcha_verification_failed") from exc
+            rewarded_ads_prepare_total.labels(status="turnstile-error").inc()
+            logger.exception("Failed to verify Turnstile token")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="turnstile_verification_failed",
+            ) from exc
 
         result = response.json()
-        risk = result.get("riskAnalysis", {})
-        score = float(risk.get("score") or 0.0)
-        reasons = risk.get("reasons") or []
-        if score < self.settings.recaptcha_min_score:
-            rewarded_ads_prepare_total.labels(status="recaptcha-rejected").inc()
-            logger.info("Recaptcha rejected user %s score %s reasons=%s", user_id, score, reasons)
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="recaptcha_failed")
+        success = bool(result.get("success"))
+        if not success:
+            rewarded_ads_prepare_total.labels(status="turnstile-rejected").inc()
+            logger.info(
+                "Turnstile rejected user %s errors=%s",
+                user_id,
+                result.get("error-codes"),
+            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="turnstile_failed")
+
+        action = result.get("action")
+        if action and action != "ads_prepare":
+            rewarded_ads_prepare_total.labels(status="turnstile-rejected").inc()
+            logger.info("Turnstile action mismatch user %s action=%s", user_id, action)
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="turnstile_failed")
+
+        raw_score = result.get("score")
+        score = float(raw_score) if raw_score is not None else 1.0
+        if score < self.settings.turnstile_min_score:
+            rewarded_ads_prepare_total.labels(status="turnstile-rejected").inc()
+            logger.info("Turnstile score too low user %s score %s", user_id, score)
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="turnstile_failed")
 
     def _fetch_limits_snapshot(self, user_id: UUID, device_hash: str, day: date) -> LimitsSnapshot:
         stmt = (

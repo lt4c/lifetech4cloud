@@ -251,6 +251,14 @@ export interface StatusDb {
   last_migration: string | null;
 }
 
+export interface RewardProviderConfig {
+  enabled: boolean;
+  zoneId?: string | null;
+  scriptUrl?: string | null;
+  adTagBase?: string | null;
+  priceFloor?: number | null;
+}
+
 export interface RewardPolicy {
   rewardPerView: number;
   requiredDuration: number;
@@ -260,14 +268,21 @@ export interface RewardPolicy {
   effectivePerDay: number;
   priceFloor?: number | null;
   placements: string[];
+  defaultProvider?: string | null;
+  providers?: Record<string, RewardProviderConfig>;
 }
 
 export interface PrepareAdResponse {
+  provider: string;
   nonce: string;
-  adTagUrl: string;
-  expiresIn: number;
   deviceHash: string;
+  adTagUrl?: string;
+  expiresIn?: number;
   priceFloor?: number | null;
+  ticket?: string;
+  ticketExpiresIn?: number;
+  zoneId?: string;
+  scriptUrl?: string;
 }
 
 export interface WalletBalance {

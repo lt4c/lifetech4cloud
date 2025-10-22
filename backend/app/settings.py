@@ -4,7 +4,7 @@ from functools import lru_cache
 from typing import List, Set
 from urllib.parse import urlparse
 
-from pydantic import AnyHttpUrl, Field
+from pydantic import AliasChoices, AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,8 +29,18 @@ class Settings(BaseSettings):
     reward_amount: int = Field(5, alias="REWARD_AMOUNT", ge=1)
     required_duration: int = Field(30, alias="REQUIRED_DURATION", ge=1)
     reward_min_interval: int = Field(30, alias="MIN_INTERVAL", ge=1)
-    rewards_per_day: int = Field(40, alias="RWD_PER_DAY", ge=1)
-    rewards_per_device: int = Field(60, alias="RWD_PER_DEVICE", ge=1)
+    rewards_per_day: int = Field(
+        40,
+        alias="DAILY_CAP_USER",
+        ge=1,
+        validation_alias=AliasChoices("DAILY_CAP_USER", "RWD_PER_DAY"),
+    )
+    rewards_per_device: int = Field(
+        60,
+        alias="DAILY_CAP_DEVICE",
+        ge=1,
+        validation_alias=AliasChoices("DAILY_CAP_DEVICE", "RWD_PER_DEVICE"),
+    )
     adaptive_cap_floor: int = Field(20, alias="RWD_PER_DAY_MIN", ge=1)
     ssv_failure_threshold: float = Field(0.2, alias="SSV_FAIL_THRESHOLD", ge=0.0, le=1.0)
     ad_tag_base: str = Field("https://example.com/gam", alias="AD_TAG_BASE")
@@ -38,11 +48,17 @@ class Settings(BaseSettings):
     ssv_secret: str | None = Field(default=None, alias="SSV_SECRET")
     ssv_public_key_path: str | None = Field(default=None, alias="PUBLIC_KEY_PATH")
     client_signing_secret: str | None = Field(default=None, alias="CLIENT_SIGNING_SECRET")
-    recaptcha_project_id: str | None = Field(default=None, alias="RECAPTCHA_PROJECT_ID")
-    recaptcha_site_key: str | None = Field(default=None, alias="RECAPTCHA_SITE_KEY")
-    recaptcha_api_key: str | None = Field(default=None, alias="RECAPTCHA_API_KEY")
-    recaptcha_min_score: float = Field(0.5, alias="RECAPTCHA_MIN_SCORE", ge=0.0, le=1.0)
-    allow_missing_recaptcha: bool = Field(False, alias="RECAPTCHA_ALLOW_MISSING")
+    default_provider: str = Field("monetag", alias="DEFAULT_PROVIDER")
+    enable_monetag: bool = Field(True, alias="ENABLE_MONETAG")
+    enable_gma: bool = Field(True, alias="ENABLE_GMA")
+    monetag_zone_id: str | None = Field(default=None, alias="MONETAG_ZONE_ID")
+    monetag_script_url: str | None = Field(default=None, alias="MONETAG_SCRIPT_URL")
+    monetag_ticket_secret: str | None = Field(default=None, alias="MONETAG_TICKET_SECRET")
+    monetag_ticket_ttl: int = Field(180, alias="MONETAG_TICKET_TTL", ge=30, le=900)
+    turnstile_site_key: str | None = Field(default=None, alias="TURNSTILE_SITE_KEY")
+    turnstile_secret_key: str | None = Field(default=None, alias="TURNSTILE_SECRET_KEY")
+    turnstile_min_score: float = Field(0.5, alias="TURNSTILE_MIN_SCORE", ge=0.0, le=1.0)
+    allow_missing_turnstile: bool = Field(False, alias="TURNSTILE_ALLOW_MISSING")
     blocked_asn: str = Field("", alias="ADS_BLOCKED_ASN")
     blocked_ips: str = Field("", alias="ADS_BLOCKED_IPS")
     ads_allowed_placements: str = Field("earn,daily,boost,test", alias="ADS_ALLOWED_PLACEMENTS")

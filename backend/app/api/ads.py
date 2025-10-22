@@ -19,7 +19,8 @@ router = APIRouter(prefix="/ads", tags=["ads"])
 
 class PrepareRequest(BaseModel):
     placement: str = Field(..., max_length=32)
-    recaptcha_token: str | None = Field(None, alias="recaptchaToken")
+    provider: str | None = Field(None, alias="provider")
+    turnstile_token: str | None = Field(None, alias="turnstileToken")
     client_nonce: str = Field(..., alias="clientNonce", max_length=64)
     timestamp: str = Field(..., max_length=32)
     signature: str = Field(..., max_length=256)
@@ -94,18 +95,20 @@ async def prepare_ads(
         user_agent=user_agent,
         client_hints=hints,
     )
+    provider_value = (payload.provider or settings.default_provider or "monetag").strip().lower()
     ctx = PrepareContext(
         placement=payload.placement,
         device_hash=device_hash,
         client_nonce=payload.client_nonce,
         timestamp=payload.timestamp,
         signature=payload.signature,
-        recaptcha_token=payload.recaptcha_token,
+        turnstile_token=payload.turnstile_token,
         ip=ip,
         user_agent=user_agent,
         client_hints=hints,
         referer_path=_referer_path(request),
         asn=_asn(request),
+        provider=provider_value,
     )
     service = _ads_service(request, db, nonce_manager)
     try:
@@ -115,8 +118,17 @@ async def prepare_ads(
     except Exception as exc:  # pragma: no cover - defensive logging
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to prepare ads") from exc
     data = dict(result)
+    data.setdefault("provider", provider_value)
     data["deviceHash"] = device_hash
     return JSONResponse(data)
+
+
+class MonetagCompleteRequest(BaseModel):
+    nonce: str = Field(..., max_length=128)
+    ticket: str = Field(..., max_length=512)
+    duration_sec: int = Field(..., alias="durationSec", ge=0)
+    device_hash: str = Field(..., alias="deviceHash", max_length=256)
+    provider: str | None = Field(None, alias="provider")
 
 
 @router.api_route("/ssv", methods=["GET", "POST"])
@@ -129,6 +141,33 @@ async def ssv_callback(
     service = _ads_service(request, db, nonce_manager)
     response = service.handle_ssv(payload, ip=_client_ip(request))
     return JSONResponse(response)
+
+
+@router.post("/complete")
+async def complete_ads(
+    payload: MonetagCompleteRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    nonce_manager: AdsNonceManager = Depends(get_ads_nonce_manager),
+) -> JSONResponse:
+    provider = (payload.provider or "monetag").strip().lower()
+    if provider != "monetag":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported provider")
+    service = _ads_service(request, db, nonce_manager)
+    try:
+        result = service.complete_monetag(
+            user,
+            nonce=payload.nonce,
+            ticket=payload.ticket,
+            duration_sec=payload.duration_sec,
+            device_hash=payload.device_hash,
+        )
+    except HTTPException as exc:
+        raise exc
+    except Exception as exc:  # pragma: no cover - defensive logging
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to complete ads") from exc
+    return JSONResponse(result)
 
 
 @router.get("/wallet")
@@ -150,6 +189,18 @@ async def get_ads_policy(
     settings = get_settings()
     service = _ads_service(request, db, nonce_manager)
     effective_cap = service._get_effective_daily_cap()  # noqa: SLF001 - intentional use
+    providers = {
+        "monetag": {
+            "enabled": settings.enable_monetag,
+            "zoneId": settings.monetag_zone_id,
+            "scriptUrl": settings.monetag_script_url,
+        },
+        "gma": {
+            "enabled": settings.enable_gma,
+            "adTagBase": settings.ad_tag_base,
+            "priceFloor": settings.price_floor,
+        },
+    }
     return {
         "rewardPerView": settings.reward_amount,
         "requiredDuration": settings.required_duration,
@@ -159,6 +210,8 @@ async def get_ads_policy(
         "effectivePerDay": effective_cap,
         "priceFloor": settings.price_floor,
         "placements": settings.allowed_placements,
+        "defaultProvider": settings.default_provider,
+        "providers": providers,
     }
 
 

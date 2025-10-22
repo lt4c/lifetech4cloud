@@ -4,6 +4,9 @@ import { AlertCircle, CheckCircle2, Loader2, Play, ShieldAlert } from "lucide-re
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAuth } from "@/context/AuthContext";
 import {
   ApiError,
@@ -11,45 +14,56 @@ import {
   fetchRewardMetrics,
   fetchWalletBalance,
   prepareRewardedAd,
+  completeMonetagAd,
 } from "@/lib/api-client";
-import type { PrepareAdResponse, RewardMetricsSummary, RewardPolicy, WalletBalance } from "@/lib/types";
+import type {
+  PrepareAdResponse,
+  RewardMetricsSummary,
+  RewardPolicy,
+  RewardProviderConfig,
+  WalletBalance,
+} from "@/lib/types";
 
 declare global {
   interface Window {
-    grecaptcha?: {
-      enterprise?: {
-        execute: (siteKey: string, options: { action: string }) => Promise<string>;
-      };
+    turnstile?: {
+      render?: (container: HTMLElement | string, options: Record<string, unknown>) => unknown;
+      execute: (siteKey: string, options?: { action?: string; cData?: string }) => Promise<string>;
     };
     google?: any;
+    monetag?: {
+      display?: (zoneId: string, options?: Record<string, unknown>) => void;
+      run?: (zoneId: string) => void;
+    };
   }
 }
 
 const PLACEMENT = "earn";
-const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY ?? "";
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
 const CLIENT_SIGNING_KEY = import.meta.env.VITE_ADS_CLIENT_SIGNING_KEY ?? "";
 
-let recaptchaLoader: Promise<void> | null = null;
+let turnstileLoader: Promise<void> | null = null;
 let imaLoader: Promise<void> | null = null;
+const monetagLoaders = new Map<string, Promise<void>>();
 
-const ensureRecaptcha = async (): Promise<void> => {
-  if (!RECAPTCHA_SITE_KEY || typeof window === "undefined") {
+const ensureTurnstile = async (): Promise<void> => {
+  if (!TURNSTILE_SITE_KEY || typeof window === "undefined") {
     return;
   }
-  if (window.grecaptcha?.enterprise) {
+  if (window.turnstile) {
     return;
   }
-  if (!recaptchaLoader) {
-    recaptchaLoader = new Promise((resolve, reject) => {
+  if (!turnstileLoader) {
+    turnstileLoader = new Promise((resolve, reject) => {
       const script = document.createElement("script");
-      script.src = `https://www.google.com/recaptcha/enterprise.js?render=${RECAPTCHA_SITE_KEY}`;
+      script.src = `https://challenges.cloudflare.com/turnstile/v0/api.js?render=${TURNSTILE_SITE_KEY}`;
       script.async = true;
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Failed to load reCAPTCHA Enterprise script"));
+      script.onerror = () => reject(new Error("Failed to load Cloudflare Turnstile script"));
       document.head.appendChild(script);
     });
   }
-  await recaptchaLoader;
+  await turnstileLoader;
 };
 
 const ensureImaSdk = async (): Promise<void> => {
@@ -72,16 +86,69 @@ const ensureImaSdk = async (): Promise<void> => {
   await imaLoader;
 };
 
-const executeRecaptcha = async (): Promise<string | null> => {
-  if (!RECAPTCHA_SITE_KEY) {
+const ensureMonetagScript = async (scriptUrl: string): Promise<void> => {
+  if (!scriptUrl) {
+    throw new Error('Monetag script URL missing');
+  }
+  if (typeof window === 'undefined') {
+    return;
+  }
+  if (document.querySelector(`script[data-monetag-src="${scriptUrl}"]`)) {
+    return;
+  }
+  let loader = monetagLoaders.get(scriptUrl);
+  if (!loader) {
+    loader = new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = scriptUrl;
+      script.async = true;
+      (script as HTMLScriptElement).dataset.monetagSrc = scriptUrl;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load Monetag script'));
+      document.head.appendChild(script);
+    });
+    monetagLoaders.set(scriptUrl, loader);
+  }
+  await loader;
+};
+
+const showMonetagAd = (zoneId: string, container: HTMLElement | null) => {
+  if (!container) {
+    return;
+  }
+  container.innerHTML = '';
+  try {
+    if (window.monetag?.display) {
+      window.monetag.display(zoneId, { container });
+      return;
+    }
+  } catch (error) {
+    console.warn('Monetag display() failed', error);
+  }
+  if (window.monetag?.run) {
+    try {
+      window.monetag.run(zoneId);
+      return;
+    } catch (error) {
+      console.warn('Monetag run() failed', error);
+    }
+  }
+  const fallback = document.createElement('div');
+  fallback.className = 'monetag-zone';
+  fallback.setAttribute('data-zone', zoneId);
+  container.appendChild(fallback);
+};
+
+const executeTurnstile = async (): Promise<string | null> => {
+  if (!TURNSTILE_SITE_KEY) {
     return null;
   }
-  await ensureRecaptcha();
-  const executor = window.grecaptcha?.enterprise;
-  if (!executor) {
-    throw new Error("reCAPTCHA Enterprise is not available");
+  await ensureTurnstile();
+  const turnstile = window.turnstile;
+  if (!turnstile?.execute) {
+    throw new Error("Cloudflare Turnstile is not available");
   }
-  return executor.execute(RECAPTCHA_SITE_KEY, { action: "ads_prepare" });
+  return turnstile.execute(TURNSTILE_SITE_KEY, { action: "ads_prepare" });
 };
 
 const signPrepareRequest = async (
@@ -145,6 +212,17 @@ const formatSeconds = (seconds: number): string => {
   return `${mins}m ${secs}s`;
 };
 
+const providerDisplayName = (provider: string): string => {
+  switch (provider) {
+    case "monetag":
+      return "Monetag";
+    case "gma":
+      return "Google Ads";
+    default:
+      return provider.toUpperCase();
+  }
+};
+
 type EarnStatus = "idle" | "preparing" | "loading" | "playing" | "verifying" | "success" | "error";
 
 const initialMetrics: RewardMetricsSummary = {
@@ -163,10 +241,19 @@ const Earn = () => {
   const { profile, refresh } = useAuth();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const adContainerRef = useRef<HTMLDivElement | null>(null);
+  const monetagContainerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<EarnStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [metricsSnapshot, setMetricsSnapshot] = useState<RewardMetricsSummary>(initialMetrics);
+  const [selectedProvider, setSelectedProvider] = useState<string>("monetag");
+  const [activeProvider, setActiveProvider] = useState<string>("monetag");
+  const [monetagElapsed, setMonetagElapsed] = useState<number>(0);
+  const [monetagPaused, setMonetagPaused] = useState<boolean>(false);
+  const monetagTimerRef = useRef<number | null>(null);
+  const monetagElapsedRef = useRef<number>(0);
+  const monetagActiveRef = useRef<boolean>(false);
+  const monetagCancelRef = useRef<((reason: Error) => void) | null>(null);
 
   const { data: policy, isLoading: isLoadingPolicy, refetch: refetchPolicy } = useQuery<RewardPolicy>({
     queryKey: ["ads-policy"],
@@ -193,8 +280,43 @@ const Earn = () => {
   });
 
   const refetchMetrics = metricsQuery.refetch;
+  const providerOptions = useMemo(() => {
+    const rawEntries = Object.entries(policy?.providers ?? {}).filter(([, cfg]) => cfg?.enabled) as Array<
+      [string, RewardProviderConfig | undefined]
+    >;
+    if (rawEntries.length > 0) {
+      return rawEntries;
+    }
+    return [["monetag", (policy?.providers?.monetag as RewardProviderConfig | undefined) ?? undefined]];
+  }, [policy]);
+  const requiredDuration = policy?.requiredDuration ?? 30;
+  const minIntervalSeconds = policy?.minInterval ?? 30;
+  const monetagProgress = requiredDuration > 0 ? Math.min(100, (monetagElapsed / requiredDuration) * 100) : 0;
+
+  useEffect(() => {
+    if (!policy) {
+      return;
+    }
+    const enabledKeys = providerOptions.map(([key]) => key);
+    if (enabledKeys.length === 0) {
+      setSelectedProvider("monetag");
+      setActiveProvider("monetag");
+      return;
+    }
+    const preferred = (policy.defaultProvider ?? "monetag").toLowerCase();
+    const fallback = enabledKeys.includes(preferred) ? preferred : enabledKeys[0];
+    setSelectedProvider((current) => (enabledKeys.includes(current) ? current : fallback));
+    setActiveProvider((current) => (enabledKeys.includes(current) ? current : fallback));
+  }, [policy, providerOptions]);
 
   const prepareMutation = useMutation(prepareRewardedAd);
+
+  useEffect(() => {
+    if (!["idle", "success", "error"].includes(status)) {
+      return;
+    }
+    setActiveProvider((current) => (current === selectedProvider ? current : selectedProvider));
+  }, [selectedProvider, status]);
 
   const cooldownRemaining = useMemo(() => {
     if (!cooldownUntil) {
@@ -216,6 +338,95 @@ const Earn = () => {
     }, 1_000);
     return () => clearInterval(timer);
   }, [cooldownUntil]);
+
+  const stopMonetagWatcher = useCallback(() => {
+    if (monetagTimerRef.current !== null) {
+      window.clearTimeout(monetagTimerRef.current);
+      monetagTimerRef.current = null;
+    }
+    monetagActiveRef.current = false;
+    const cancel = monetagCancelRef.current;
+    if (cancel) {
+      monetagCancelRef.current = null;
+      cancel(new Error("Ad cancelled"));
+    }
+  }, []);
+
+  const waitForMonetagDuration = useCallback(
+    (requiredSeconds: number) =>
+      new Promise<number>((resolve, reject) => {
+        if (typeof window === "undefined") {
+          reject(new Error("Monetag tracking requires a browser environment"));
+          return;
+        }
+        monetagElapsedRef.current = 0;
+        monetagActiveRef.current = true;
+        setMonetagElapsed(0);
+        setMonetagPaused(false);
+
+        let settled = false;
+        const handleResolve = (value: number) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          monetagCancelRef.current = null;
+          resolve(value);
+        };
+        const handleCancel = (reason: Error) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          monetagCancelRef.current = null;
+          reject(reason);
+        };
+
+        monetagCancelRef.current = handleCancel;
+
+        const tick = () => {
+          if (!monetagActiveRef.current) {
+            handleCancel(new Error("Ad cancelled"));
+            return;
+          }
+
+          const visible =
+            typeof document !== "undefined" &&
+            document.visibilityState === "visible" &&
+            document.hasFocus();
+
+          setMonetagPaused((prev) => {
+            const next = !visible;
+            return prev === next ? prev : next;
+          });
+
+          if (visible) {
+            monetagElapsedRef.current += 0.25;
+            const elapsed = monetagElapsedRef.current;
+            setMonetagElapsed((prev) => {
+              const next = Math.min(requiredSeconds, Math.floor(elapsed));
+              return next === prev ? prev : next;
+            });
+            if (elapsed >= requiredSeconds) {
+              handleResolve(Math.round(elapsed));
+              return;
+            }
+          }
+
+          monetagTimerRef.current = window.setTimeout(tick, 250);
+        };
+
+        monetagTimerRef.current = window.setTimeout(tick, 250);
+      }),
+    [],
+  );
+
+  useEffect(
+    () => () => {
+      stopMonetagWatcher();
+    },
+    [stopMonetagWatcher],
+  );
 
   const runImaAd = useCallback(
     async (adTagUrl: string) => {
@@ -294,6 +505,55 @@ const Earn = () => {
     [],
   );
 
+  const runMonetagFlow = useCallback(
+    async (session: PrepareAdResponse, requiredSeconds: number, minInterval: number) => {
+      if (!session.ticket || !session.zoneId || !session.scriptUrl) {
+        throw new Error("Monetag configuration is incomplete");
+      }
+      const container = monetagContainerRef.current;
+      if (!container) {
+        throw new Error("Monetag container unavailable");
+      }
+
+      setStatus("loading");
+      setMessage(null);
+
+      await ensureMonetagScript(session.scriptUrl);
+      container.innerHTML = "";
+      showMonetagAd(session.zoneId, container);
+      setStatus("playing");
+
+      try {
+        const watchedSeconds = await waitForMonetagDuration(requiredSeconds);
+        setStatus("verifying");
+        const result = await completeMonetagAd({
+          nonce: session.nonce,
+          ticket: session.ticket,
+          durationSec: Math.round(watchedSeconds),
+          deviceHash: session.deviceHash,
+          provider: "monetag",
+        });
+        const gained = Number(result.added ?? 0);
+        setStatus("success");
+        if (gained > 0) {
+          setMessage(`+${gained} coins added to your wallet.`);
+        } else {
+          setMessage("Verification complete. Balance will refresh shortly.");
+        }
+        setCooldownUntil(Date.now() + minInterval * 1000);
+        setMonetagElapsed(requiredSeconds);
+        setMonetagPaused(false);
+        refresh();
+        refetchWallet();
+        refetchMetrics();
+      } finally {
+        monetagCancelRef.current = null;
+        stopMonetagWatcher();
+      }
+    },
+    [waitForMonetagDuration, refresh, refetchWallet, refetchMetrics, stopMonetagWatcher],
+  );
+
   const waitForWalletUpdate = useCallback(
     async (previousBalance: number): Promise<number> => {
       for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -310,99 +570,276 @@ const Earn = () => {
   );
 
   const handleWatchAd = useCallback(async () => {
+
     if (!profile) {
-      setMessage("Bạn cần đăng nhập để nhận thưởng.");
+
+      setMessage("Please sign in to earn rewards.");
+
       return;
+
     }
+
     if (!policy) {
-      setMessage("Đang tải cấu hình thưởng, vui lòng thử lại sau.");
+
+      setMessage("Reward policy is loading. Please try again shortly.");
+
       return;
+
     }
+
     if (cooldownUntil && cooldownUntil > Date.now()) {
+
       setStatus("error");
-      setMessage(`Bạn đang trong thời gian chờ ${formatSeconds(cooldownRemaining)}`);
+
+      setMessage(`You're still on cooldown for ${formatSeconds(cooldownRemaining)}.`);
+
       return;
+
     }
+
+
 
     setStatus("preparing");
+
     setMessage(null);
 
-    const recaptchaToken = await executeRecaptcha().catch((error) => {
-      console.warn("reCAPTCHA verification failed", error);
+    setMonetagElapsed(0);
+
+    setMonetagPaused(false);
+
+
+
+    const turnstileToken = await executeTurnstile().catch((error) => {
+
+      console.warn("Turnstile verification failed", error);
+
       return null;
+
     });
 
+
+
     const clientNonce = crypto.randomUUID();
+
     const timestamp = Math.floor(Date.now() / 1000).toString();
+
     const signature = await signPrepareRequest(profile.id, clientNonce, timestamp, PLACEMENT);
+
     const hints = collectClientHints();
+
+    const providerChoice = (selectedProvider || policy.defaultProvider || "monetag").toLowerCase();
+
     const startingBalance = walletBalance;
 
+
+
     let prepareResponse: PrepareAdResponse;
-    try {
-      prepareResponse = await prepareMutation.mutateAsync({
-        placement: PLACEMENT,
-        recaptchaToken,
-        clientNonce,
-        timestamp,
-        signature,
-        hints,
-      });
-    } catch (error) {
-      setStatus("error");
-      if (error instanceof ApiError) {
-        const detail = (error.data as { detail?: string })?.detail ?? error.message;
-        setMessage(detail);
-        if (detail?.toLowerCase().includes("cooldown")) {
-          setCooldownUntil(Date.now() + policy.minInterval * 1000);
-        }
-      } else if (error instanceof Error) {
-        setMessage(error.message);
-      } else {
-        setMessage("Không thể chuẩn bị quảng cáo. Vui lòng thử lại.");
-      }
-      return;
-    }
 
     try {
-      setStatus("loading");
-      await runImaAd(prepareResponse.adTagUrl);
-      setStatus("verifying");
-      const newBalance = await waitForWalletUpdate(startingBalance);
-      if (newBalance > startingBalance) {
-        const gained = newBalance - startingBalance;
-        setStatus("success");
-        setMessage(`+${gained} xu đã được cộng vào ví của bạn.`);
-        setCooldownUntil(Date.now() + policy.minInterval * 1000);
-        refresh();
-        refetchWallet();
-        refetchMetrics();
-      } else {
-        setStatus("success");
-        setMessage("Bạn đã hoàn thành quảng cáo. Phần thưởng sẽ được cập nhật sau vài giây.");
-        setCooldownUntil(Date.now() + policy.minInterval * 1000);
-      }
+
+      prepareResponse = await prepareMutation.mutateAsync({
+
+        placement: PLACEMENT,
+
+        provider: providerChoice,
+
+        turnstileToken,
+
+        clientNonce,
+
+        timestamp,
+
+        signature,
+
+        hints,
+
+      });
+
     } catch (error) {
+
       setStatus("error");
-      if (error instanceof Error) {
+
+      if (error instanceof ApiError) {
+
+        const detail = (error.data as { detail?: string })?.detail ?? error.message;
+
+        setMessage(detail);
+
+        if (detail?.toLowerCase().includes("cooldown")) {
+
+          setCooldownUntil(Date.now() + minIntervalSeconds * 1000);
+
+        }
+
+      } else if (error instanceof Error) {
+
         setMessage(error.message);
+
       } else {
-        setMessage("Không thể phát quảng cáo. Vui lòng thử lại.");
+
+        setMessage("Unable to prepare the ad. Please try again.");
+
       }
+
+      return;
+
     }
+
+
+
+    const effectiveProvider = (prepareResponse.provider ?? providerChoice).toLowerCase();
+
+    setActiveProvider(effectiveProvider);
+
+
+
+    if (effectiveProvider === "monetag") {
+
+      try {
+
+        await runMonetagFlow(prepareResponse, requiredDuration, minIntervalSeconds);
+
+      } catch (error) {
+
+        setStatus("error");
+
+        if (error instanceof Error) {
+
+          setMessage(error.message);
+
+        } else {
+
+          setMessage("Failed to complete the Monetag session.");
+
+        }
+
+        setMonetagElapsed(0);
+
+        setMonetagPaused(false);
+
+      }
+
+      return;
+
+    }
+
+
+
+    if (effectiveProvider === "gma") {
+
+      try {
+
+        setStatus("loading");
+
+        setMessage(null);
+
+        stopMonetagWatcher();
+
+        setMonetagElapsed(0);
+
+        setMonetagPaused(false);
+
+        if (!prepareResponse.adTagUrl) {
+
+          throw new Error("Missing ad tag URL for Google Ads playback.");
+
+        }
+
+        await runImaAd(prepareResponse.adTagUrl);
+
+        setStatus("verifying");
+
+        const newBalance = await waitForWalletUpdate(startingBalance);
+
+        if (newBalance > startingBalance) {
+
+          const gained = newBalance - startingBalance;
+
+          setStatus("success");
+
+          setMessage(`+${gained} coins added to your wallet.`);
+
+          setCooldownUntil(Date.now() + minIntervalSeconds * 1000);
+
+          refresh();
+
+          refetchWallet();
+
+          refetchMetrics();
+
+        } else {
+
+          setStatus("success");
+
+          setMessage("Ad completed. Your balance will refresh shortly.");
+
+          setCooldownUntil(Date.now() + minIntervalSeconds * 1000);
+
+        }
+
+      } catch (error) {
+
+        setStatus("error");
+
+        if (error instanceof Error) {
+
+          setMessage(error.message);
+
+        } else {
+
+          setMessage("Failed to play the advertisement. Please try again.");
+
+        }
+
+      }
+
+      return;
+
+    }
+
+
+
+    setStatus("error");
+
+    setMessage("Unsupported ad provider selected.");
+
   }, [
-    policy,
+
     profile,
+
+    policy,
+
     cooldownUntil,
+
     cooldownRemaining,
-    prepareMutation,
-    runImaAd,
-    waitForWalletUpdate,
-    refresh,
+
+    selectedProvider,
+
     walletBalance,
+
+    prepareMutation,
+
+    minIntervalSeconds,
+
+    runMonetagFlow,
+
+    requiredDuration,
+
+    stopMonetagWatcher,
+
+    runImaAd,
+
+    waitForWalletUpdate,
+
+    refresh,
+
     refetchWallet,
+
     refetchMetrics,
+
   ]);
+
+
 
   return (
     <div className="space-y-6">
@@ -434,6 +871,44 @@ const Earn = () => {
                 <Badge variant="outline">{policy?.rewardPerView ?? 5} xu</Badge>
               </div>
             </div>
+
+            {providerOptions.length > 1 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Ad provider</p>
+                <RadioGroup
+                  value={selectedProvider}
+                  onValueChange={(value) => setSelectedProvider(value)}
+                  className="flex flex-wrap gap-2"
+                >
+                  {providerOptions.map(([value, cfg]) => {
+                    const id = `provider-${value}`;
+                    return (
+                      <div
+                        key={value}
+                        className={`flex items-center gap-2 rounded-md border border-border/40 px-3 py-2 transition ring-offset-background ${
+                          selectedProvider === value ? "ring-1 ring-primary" : ""
+                        }`}
+                      >
+                        <RadioGroupItem id={id} value={value} />
+                        <div className="flex flex-col">
+                          <Label htmlFor={id} className="text-sm font-medium">
+                            {providerDisplayName(value)}
+                          </Label>
+                          <span className="text-xs text-muted-foreground">
+                            {value === "monetag"
+                              ? "Client-side timer + server ticket"
+                              : "Google IMA + server verification"}
+                          </span>
+                          {value === "monetag" && cfg?.zoneId && (
+                            <span className="text-xs text-muted-foreground">Zone {cfg.zoneId}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </RadioGroup>
+              </div>
+            )}
 
             <div className="flex flex-col gap-3">
               <Button
@@ -495,17 +970,41 @@ const Earn = () => {
               </div>
             </div>
 
-            <div
-              ref={adContainerRef}
-              className="relative w-full overflow-hidden rounded-lg border border-border/40 bg-black aspect-video"
-            >
-              <video
-                ref={videoRef}
-                className="h-full w-full object-contain"
-                playsInline
-                muted
-                controls={false}
+            {activeProvider === "monetag" && (
+              <div className="space-y-2">
+                <Progress value={monetagProgress} />
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    {Math.min(monetagElapsed, requiredDuration)}s / {requiredDuration}s
+                  </span>
+                  {monetagPaused && (
+                    <span className="font-medium text-amber-500">Keep this tab visible</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="relative w-full overflow-hidden rounded-lg border border-border/40 bg-black aspect-video">
+              <div
+                ref={monetagContainerRef}
+                className={`absolute inset-0 flex h-full w-full items-center justify-center transition-opacity ${
+                  activeProvider === "monetag" ? "opacity-100" : "pointer-events-none opacity-0"
+                }`}
               />
+              <div
+                ref={adContainerRef}
+                className={`absolute inset-0 flex h-full w-full transition-opacity ${
+                  activeProvider === "gma" ? "opacity-100" : "pointer-events-none opacity-0"
+                }`}
+              >
+                <video
+                  ref={videoRef}
+                  className="h-full w-full object-contain"
+                  playsInline
+                  muted
+                  controls={false}
+                />
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -304,7 +304,8 @@ export const logout = async (): Promise<void> => {
 /* Rewarded Ads */
 type PrepareAdPayload = {
   placement: string;
-  recaptchaToken?: string | null;
+  provider?: string | null;
+  turnstileToken?: string | null;
   clientNonce: string;
   timestamp: string;
   signature?: string | null;
@@ -321,7 +322,8 @@ export const fetchWalletBalance = async (): Promise<WalletBalance> => {
 
 export const prepareRewardedAd = async ({
   placement,
-  recaptchaToken,
+  provider,
+  turnstileToken,
   clientNonce,
   timestamp,
   signature,
@@ -332,8 +334,11 @@ export const prepareRewardedAd = async ({
     clientNonce,
     timestamp,
   };
-  if (recaptchaToken) {
-    bodyPayload.recaptchaToken = recaptchaToken;
+  if (provider) {
+    bodyPayload.provider = provider;
+  }
+  if (turnstileToken) {
+    bodyPayload.turnstileToken = turnstileToken;
   }
   if (signature) {
     bodyPayload.signature = signature;
@@ -343,6 +348,27 @@ export const prepareRewardedAd = async ({
   }
   const body = JSON.stringify(bodyPayload);
   return apiFetch<PrepareAdResponse>("/ads/prepare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+};
+
+export const completeMonetagAd = async (payload: {
+  nonce: string;
+  ticket: string;
+  durationSec: number;
+  deviceHash: string;
+  provider?: string | null;
+}): Promise<{ ok: boolean; added: number; balance: number }> => {
+  const body = JSON.stringify({
+    nonce: payload.nonce,
+    ticket: payload.ticket,
+    durationSec: payload.durationSec,
+    deviceHash: payload.deviceHash,
+    provider: payload.provider ?? "monetag",
+  });
+  return apiFetch<{ ok: boolean; added: number; balance: number }>("/ads/complete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body,

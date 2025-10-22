@@ -43,7 +43,7 @@ rewarded_ads_duration_seconds = Histogram(
 )
 rewarded_ads_daily_cap = Gauge(
     "rewarded_ads_effective_daily_cap",
-    "Effective RWD_PER_DAY cap after adaptive adjustments",
+    "Effective DAILY_CAP_USER cap after adaptive adjustments",
 )
 rewarded_ads_failure_ratio = Gauge(
     "rewarded_ads_failure_ratio",
