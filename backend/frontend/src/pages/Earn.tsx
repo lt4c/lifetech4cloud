@@ -4,15 +4,9 @@ import { AlertCircle, CheckCircle2, Loader2, Play, ShieldAlert, MoreHorizontal, 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-<<<<<<< HEAD
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-=======
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
->>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
 import { useAuth } from "@/context/AuthContext";
 import {
   ApiError,
@@ -32,14 +26,10 @@ import type {
 
 declare global {
   interface Window {
-<<<<<<< HEAD
     turnstile?: {
       render?: (container: HTMLElement | string, options: Record<string, unknown>) => unknown;
       execute: (siteKey: string, options?: { action?: string; cData?: string }) => Promise<string>;
     };
-=======
-    grecaptcha?: { enterprise?: { execute: (siteKey: string, options: { action: string }) => Promise<string> } };
->>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
     google?: any;
     monetag?: {
       display?: (zoneId: string, options?: Record<string, unknown>) => void;
@@ -56,7 +46,6 @@ let turnstileLoader: Promise<void> | null = null;
 let imaLoader: Promise<void> | null = null;
 const monetagLoaders = new Map<string, Promise<void>>();
 
-<<<<<<< HEAD
 const ensureTurnstile = async (): Promise<void> => {
   if (!TURNSTILE_SITE_KEY || typeof window === "undefined") {
     return;
@@ -66,13 +55,6 @@ const ensureTurnstile = async (): Promise<void> => {
   }
   if (!turnstileLoader) {
     turnstileLoader = new Promise((resolve, reject) => {
-=======
-const ensureRecaptcha = async (): Promise<void> => {
-  if (!RECAPTCHA_SITE_KEY || typeof window === "undefined") return;
-  if (window.grecaptcha?.enterprise) return;
-  if (!recaptchaLoader) {
-    recaptchaLoader = new Promise((resolve, reject) => {
->>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
       const script = document.createElement("script");
       script.src = `https://challenges.cloudflare.com/turnstile/v0/api.js?render=${TURNSTILE_SITE_KEY}`;
       script.async = true;
@@ -100,7 +82,6 @@ const ensureImaSdk = async (): Promise<void> => {
   await imaLoader;
 };
 
-<<<<<<< HEAD
 const ensureMonetagScript = async (scriptUrl: string): Promise<void> => {
   if (!scriptUrl) {
     throw new Error('Monetag script URL missing');
@@ -164,14 +145,6 @@ const executeTurnstile = async (): Promise<string | null> => {
     throw new Error("Cloudflare Turnstile is not available");
   }
   return turnstile.execute(TURNSTILE_SITE_KEY, { action: "ads_prepare" });
-=======
-const executeRecaptcha = async (): Promise<string | null> => {
-  if (!RECAPTCHA_SITE_KEY) return null;
-  await ensureRecaptcha();
-  const executor = window.grecaptcha?.enterprise;
-  if (!executor) throw new Error("reCAPTCHA Enterprise is not available");
-  return executor.execute(RECAPTCHA_SITE_KEY, { action: "ads_prepare" });
->>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
 };
 
 const signPrepareRequest = async (
@@ -203,7 +176,7 @@ const collectClientHints = (): Record<string, string> => {
   }
   try {
     hints.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
-  } catch {}
+  } catch { }
   return hints;
 };
 
@@ -336,7 +309,6 @@ const Earn = () => {
     return () => clearInterval(timer);
   }, [cooldownUntil]);
 
-<<<<<<< HEAD
   const stopMonetagWatcher = useCallback(() => {
     if (monetagTimerRef.current !== null) {
       window.clearTimeout(monetagTimerRef.current);
@@ -435,60 +407,53 @@ const Earn = () => {
       if (!google?.ima || !videoElement || !containerElement) {
         throw new Error("IMA SDK is not ready");
       }
-=======
-  const runImaAd = useCallback(async (adTagUrl: string) => {
-    await ensureImaSdk();
-    const google = window.google;
-    const videoElement = videoRef.current;
-    const containerElement = adContainerRef.current;
-    if (!google?.ima || !videoElement || !containerElement) throw new Error("IMA SDK is not ready");
->>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
 
-    return new Promise<void>((resolve, reject) => {
-      const adDisplayContainer = new google.ima.AdDisplayContainer(containerElement, videoElement);
-      try {
-        adDisplayContainer.initialize();
-      } catch {}
 
-      const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
-      adsLoader.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, (event: any) => {
-        adsLoader.destroy();
-        reject(new Error(event.getError()?.toString() ?? "IMA playback error"));
-      });
-
-      adsLoader.addEventListener(google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, (event: any) => {
+      return new Promise<void>((resolve, reject) => {
+        const adDisplayContainer = new google.ima.AdDisplayContainer(containerElement, videoElement);
         try {
-          const adsManager = event.getAdsManager(videoElement);
-          adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, () => videoElement.pause());
-          adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () => setStatus("playing"));
-          adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () => resolve());
-          adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, () => resolve());
-          adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, (err: any) => {
-            reject(new Error(err.getError()?.toString() ?? "Ad playback error"));
-          });
-          adsManager.init(containerElement.clientWidth || 640, containerElement.clientHeight || 360, google.ima.ViewMode.NORMAL);
-          adsManager.start();
+          adDisplayContainer.initialize();
+        } catch { }
+
+        const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+        adsLoader.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, (event: any) => {
+          adsLoader.destroy();
+          reject(new Error(event.getError()?.toString() ?? "IMA playback error"));
+        });
+
+        adsLoader.addEventListener(google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, (event: any) => {
+          try {
+            const adsManager = event.getAdsManager(videoElement);
+            adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, () => videoElement.pause());
+            adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () => setStatus("playing"));
+            adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () => resolve());
+            adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, () => resolve());
+            adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, (err: any) => {
+              reject(new Error(err.getError()?.toString() ?? "Ad playback error"));
+            });
+            adsManager.init(containerElement.clientWidth || 640, containerElement.clientHeight || 360, google.ima.ViewMode.NORMAL);
+            adsManager.start();
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        });
+
+        const request = new google.ima.AdsRequest();
+        request.adTagUrl = adTagUrl;
+        request.linearAdSlotWidth = containerElement.clientWidth || 640;
+        request.linearAdSlotHeight = containerElement.clientHeight || 360;
+        request.nonLinearAdSlotWidth = containerElement.clientWidth || 640;
+        request.nonLinearAdSlotHeight = (containerElement.clientHeight || 360) / 3;
+        request.setAdWillAutoPlay(true);
+        request.setAdWillPlayMuted(false);
+
+        try {
+          adsLoader.requestAds(request);
         } catch (error) {
           reject(error instanceof Error ? error : new Error(String(error)));
         }
       });
-
-      const request = new google.ima.AdsRequest();
-      request.adTagUrl = adTagUrl;
-      request.linearAdSlotWidth = containerElement.clientWidth || 640;
-      request.linearAdSlotHeight = containerElement.clientHeight || 360;
-      request.nonLinearAdSlotWidth = containerElement.clientWidth || 640;
-      request.nonLinearAdSlotHeight = (containerElement.clientHeight || 360) / 3;
-      request.setAdWillAutoPlay(true);
-      request.setAdWillPlayMuted(false);
-
-      try {
-        adsLoader.requestAds(request);
-      } catch (error) {
-        reject(error instanceof Error ? error : new Error(String(error)));
-      }
-    });
-  }, []);
+    }, []);
 
   const runMonetagFlow = useCallback(
     async (session: PrepareAdResponse, requiredSeconds: number, minInterval: number) => {
@@ -586,7 +551,6 @@ const Earn = () => {
 
     setMessage(null);
 
-<<<<<<< HEAD
     setMonetagElapsed(0);
 
     setMonetagPaused(false);
@@ -603,9 +567,7 @@ const Earn = () => {
 
 
 
-=======
-    const recaptchaToken = await executeRecaptcha().catch(() => null);
->>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
+
     const clientNonce = crypto.randomUUID();
 
     const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -621,24 +583,7 @@ const Earn = () => {
 
 
     let prepareResponse: PrepareAdResponse;
-<<<<<<< HEAD
-=======
-    try {
-      prepareResponse = await prepareMutation.mutateAsync({ placement: PLACEMENT, recaptchaToken, clientNonce, timestamp, signature, hints });
-    } catch (error) {
-      setStatus("error");
-      if (error instanceof ApiError) {
-        const detail = (error.data as { detail?: string })?.detail ?? error.message;
-        setMessage(detail);
-        if (detail?.toLowerCase().includes("cooldown")) setCooldownUntil(Date.now() + policy.minInterval * 1000);
-      } else if (error instanceof Error) {
-        setMessage(error.message);
-      } else {
-        setMessage("Không thể chuẩn bị quảng cáo. Vui lòng thử lại.");
-      }
-      return;
-    }
->>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
+
 
     try {
 
@@ -663,7 +608,6 @@ const Earn = () => {
     } catch (error) {
 
       setStatus("error");
-<<<<<<< HEAD
 
       if (error instanceof ApiError) {
 
@@ -689,10 +633,7 @@ const Earn = () => {
 
       return;
 
-=======
-      if (error instanceof Error) setMessage(error.message);
-      else setMessage("Không thể phát quảng cáo. Vui lòng thử lại.");
->>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
+
     }
 
 
@@ -849,70 +790,8 @@ const Earn = () => {
 
   ]);
 
-<<<<<<< HEAD
 
-=======
-  // Reg Account For Coin state
-  type RegState = { open: boolean; minimized: boolean; status: "idle" | "pending" | "done" | "error"; msg?: string | null };
-  const REG_KEY = "lt4c_reg_account";
-  const [regOpen, setRegOpen] = useState<boolean>(false);
-  const [regMinimized, setRegMinimized] = useState<boolean>(false);
-  const [regStatus, setRegStatus] = useState<RegState["status"]>("idle");
-  const [regMsg, setRegMsg] = useState<string | null>(null);
-  const [regEmail, setRegEmail] = useState<string>("");
-  const [regPass, setRegPass] = useState<string>("");
-  const [regConfirm, setRegConfirm] = useState<boolean>(false);
-  const [regCopied, setRegCopied] = useState<boolean>(false);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(REG_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setRegOpen(Boolean(parsed.open));
-        setRegMinimized(Boolean(parsed.minimized));
-        setRegStatus((parsed.status as RegState["status"]) ?? "idle");
-        setRegMsg(parsed.msg ?? null);
-      }
-    } catch {}
-  }, []);
-
-  const persistReg = (next?: Partial<RegState>) => {
-    try {
-      const current: RegState = { open: regOpen, minimized: regMinimized, status: regStatus, msg: regMsg };
-      const merged = { ...current, ...(next ?? {}) };
-      localStorage.setItem(REG_KEY, JSON.stringify(merged));
-    } catch {}
-  };
-
-  useEffect(() => {
-    persistReg();
-  }, [regOpen, regMinimized, regStatus, regMsg]);
-
-  const onRegStart = useCallback(async () => {
-    setRegStatus("pending");
-    setRegMsg("we are confirming\nplease wait ...\nand check your mailbox to confirm if there is a confirmation email");
-    persistReg({ open: true, minimized: false, status: "pending", msg: "..." });
-    try {
-      const { registerWorkerTokenForCoin } = await import("@/lib/api-client");
-      const resp = await registerWorkerTokenForCoin({ email: regEmail, password: regPass, confirm: regConfirm });
-      if (resp?.ok) {
-        setRegStatus("done");
-        setRegMsg("Done\nthank you so much\nadded 15 coin");
-        refresh();
-        refetchWallet();
-      } else {
-        setRegStatus("error");
-        setRegMsg("Request failed");
-      }
-    } catch (e: any) {
-      setRegStatus("error");
-      if (e?.status === 409) setRegMsg("This email already exists (duplicate)");
-      else if (e?.data?.detail) setRegMsg(String(e.data.detail));
-      else setRegMsg(e?.message ?? "Request failed");
-    }
-  }, [regEmail, regPass, regConfirm, refresh, refetchWallet]);
->>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
 
   return (
     <div className="space-y-6">
@@ -1097,9 +976,8 @@ const Earn = () => {
                     return (
                       <div
                         key={value}
-                        className={`flex items-center gap-2 rounded-md border border-border/40 px-3 py-2 transition ring-offset-background ${
-                          selectedProvider === value ? "ring-1 ring-primary" : ""
-                        }`}
+                        className={`flex items-center gap-2 rounded-md border border-border/40 px-3 py-2 transition ring-offset-background ${selectedProvider === value ? "ring-1 ring-primary" : ""
+                          }`}
                       >
                         <RadioGroupItem id={id} value={value} />
                         <div className="flex flex-col">
@@ -1150,7 +1028,7 @@ const Earn = () => {
               </Button>
               {cooldownUntil && cooldownUntil > Date.now() && (
                 <div className="text-sm text-muted-foreground">
-                  Vui lòng đợi {formatSeconds(cooldownRemaining)} trước khi xem quảng cáo tiếp theo.
+                  Vui long doi {formatSeconds(cooldownRemaining)} truoc khi xem quang cao tiep theo.
                 </div>
               )}
             </div>
@@ -1179,7 +1057,6 @@ const Earn = () => {
               </div>
             </div>
 
-<<<<<<< HEAD
             {activeProvider === "monetag" && (
               <div className="space-y-2">
                 <Progress value={monetagProgress} />
@@ -1197,15 +1074,13 @@ const Earn = () => {
             <div className="relative w-full overflow-hidden rounded-lg border border-border/40 bg-black aspect-video">
               <div
                 ref={monetagContainerRef}
-                className={`absolute inset-0 flex h-full w-full items-center justify-center transition-opacity ${
-                  activeProvider === "monetag" ? "opacity-100" : "pointer-events-none opacity-0"
-                }`}
+                className={`absolute inset-0 flex h-full w-full items-center justify-center transition-opacity ${activeProvider === "monetag" ? "opacity-100" : "pointer-events-none opacity-0"
+                  }`}
               />
               <div
                 ref={adContainerRef}
-                className={`absolute inset-0 flex h-full w-full transition-opacity ${
-                  activeProvider === "gma" ? "opacity-100" : "pointer-events-none opacity-0"
-                }`}
+                className={`absolute inset-0 flex h-full w-full transition-opacity ${activeProvider === "gma" ? "opacity-100" : "pointer-events-none opacity-0"
+                  }`}
               >
                 <video
                   ref={videoRef}
@@ -1229,59 +1104,39 @@ const Earn = () => {
             {policy && (
               <ul className="space-y-2">
                 <li>
-                  <span className="font-medium">Thưởng mỗi lượt:</span>{" "}
-                  {policy.rewardPerView} xu (xem tối thiểu {policy.requiredDuration}s)
+                  <span className="font-medium">Thuong moi luot:</span>{" "}
+                  {policy.rewardPerView} xu (xem toi thieu {policy.requiredDuration}s)
                 </li>
                 <li>
-                  <span className="font-medium">Thời gian chờ:</span>{" "}
-                  {formatSeconds(policy.minInterval)} giữa các lượt trên cùng thiết bị.
+                  <span className="font-medium">Thoi gian cho:</span>{" "}
+                  {formatSeconds(policy.minInterval)} giua cac luot tren cung thiet bi.
                 </li>
                 <li>
-                  <span className="font-medium">Giới hạn theo người dùng:</span>{" "}
-                  {policy.effectivePerDay}/{policy.perDay} lượt mỗi ngày.
+                  <span className="font-medium">Gioi han theo nguoi dung:</span>{" "}
+                  {policy.effectivePerDay}/{policy.perDay} luot moi ngay.
                 </li>
                 <li>
-                  <span className="font-medium">Giới hạn theo thiết bị:</span>{" "}
-                  {policy.perDevice} lượt mỗi ngày.
+                  <span className="font-medium">Gioi han theo thiet bi:</span>{" "}
+                  {policy.perDevice} luot moi ngay.
                 </li>
                 {policy.priceFloor !== null && (
-=======
-            {/* Chính sách & Quota gộp trong Earn */}
-            <div className="pt-4 border-t border-border/40 space-y-2">
-              <p className="text-sm font-semibold">Chính sách & Quota</p>
-              {policy && (
-                <ul className="space-y-2">
->>>>>>> 57fb3a6bfe7da418bdeefb6102512c145ca5c389
                   <li>
-                    <span className="font-medium">Thưởng mỗi lượt:</span> {policy.rewardPerView} xu (xem tối thiểu {policy.requiredDuration}s)
+                    <span className="font-medium">Gia san hien tai:</span>{" "}
+                    CPM {policy.priceFloor}
                   </li>
-                  <li>
-                    <span className="font-medium">Thời gian chờ:</span> {formatSeconds(policy.minInterval)} giữa các lượt trên cùng thiết bị.
-                  </li>
-                  <li>
-                    <span className="font-medium">Giới hạn theo người dùng:</span> {policy.effectivePerDay}/{policy.perDay} lượt mỗi ngày.
-                  </li>
-                  <li>
-                    <span className="font-medium">Giới hạn theo thiết bị:</span> {policy.perDevice} lượt mỗi ngày.
-                  </li>
-                  {policy.priceFloor !== null && (
-                    <li>
-                      <span className="font-medium">Giá sàn hiện tại:</span> CPM {policy.priceFloor}
-                    </li>
-                  )}
-                </ul>
-              )}
-              {!isLoadingPolicy && !policy && (
-                <div className="flex items-center gap-2 text-destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  Không thể tải cấu hình thưởng. <button type="button" onClick={() => refetchPolicy()} className="underline">Thử lại</button>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                )}
+              </ul>
+            )}
+            {!isLoadingPolicy && !policy && (
+              <div className="flex items-center gap-2 text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                Không thể tải cấu hình thưởng. <button type="button" onClick={() => refetchPolicy()} className="underline">Thử lại</button>
+              </div>
+            )}
+        </CardContent>
+      </Card>
     </div>
+  </div>
   );
 };
 

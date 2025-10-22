@@ -5,7 +5,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 export function Footer() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const version = "v1.2.6";
+  const version = "devStable v1.2.7";
 
   // Fallback nếu project không có CSS var:
   // const leftPx = collapsed ? 64 : 256;
