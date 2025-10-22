@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Loader2, Play, ShieldAlert, MoreHorizontal, Minimize2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -554,10 +554,8 @@ const Earn = () => {
         </Dialog>
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle>Nháº­n +5 xu</CardTitle>
-            <CardDescription>
-              Má»—i lÆ°á»£t xem há»£p lá»‡ sáº½ Ä‘Æ°á»£c cá»™ng xu sau khi xÃ¡c minh.
-            </CardDescription>
+            <CardTitle>Earn +5 coins</CardTitle>
+            <CardDescription>Each valid view will be credited after verification.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex items-center gap-4">
@@ -568,7 +566,7 @@ const Earn = () => {
                 </Badge>
               </div>
               <div className="flex items-center gap-2 rounded-lg border border-border/40 px-3 py-2">
-                <span className="text-sm text-muted-foreground">ThÆ°á»Ÿng má»—i lÆ°á»£t</span>
+                <span className="text-sm text-muted-foreground">Reward per view</span>
                 <Badge variant="outline">{policy?.rewardPerView ?? 5} xu</Badge>
               </div>
             </div>
@@ -598,13 +596,13 @@ const Earn = () => {
                 ) : (
                   <>
                     <Play className="mr-2 h-4 w-4" />
-                    Xem quáº£ng cÃ¡o (+{policy?.rewardPerView ?? 5} xu)
+                    Watch ad (+{policy?.rewardPerView ?? 5} coins)
                   </>
                 )}
               </Button>
               {cooldownUntil && cooldownUntil > Date.now() && (
                 <div className="text-sm text-muted-foreground">
-                  Vui lÃ²ng Ä‘á»£i {formatSeconds(cooldownRemaining)} trÆ°á»›c khi xem quáº£ng cÃ¡o tiáº¿p theo.
+                  Please wait {formatSeconds(cooldownRemaining)} before the next ad.
                 </div>
               )}
             </div>
@@ -620,13 +618,13 @@ const Earn = () => {
                 )}
                 <div>
                   <p className="text-sm font-semibold">
-                    {status === "idle" && "Sáºµn sÃ ng nháº­n thÆ°á»Ÿng"}
-                    {status === "preparing" && "Äang chuáº©n bá»‹ quáº£ng cÃ¡o..."}
-                    {status === "loading" && "Äang táº£i quáº£ng cÃ¡o..."}
-                    {status === "playing" && "Quáº£ng cÃ¡o Ä‘ang phÃ¡t, vui lÃ²ng xem Ä‘áº¿n háº¿t Ä‘á»ƒ nháº­n thÆ°á»Ÿng."}
-                    {status === "verifying" && "Äang chá» xÃ¡c minh pháº§n thÆ°á»Ÿng..."}
-                    {status === "success" && "HoÃ n táº¥t"}
-                    {status === "error" && "KhÃ´ng thá»ƒ hoÃ n thÃ nh lÆ°á»£t xem"}
+                    {status === "idle" && "Ready to earn"}
+                    {status === "preparing" && "Preparing ad..."}
+                    {status === "loading" && "Loading ad..."}
+                    {status === "playing" && "Ad is playing, please watch to the end."}
+                    {status === "verifying" && "Verifying reward..."}
+                    {status === "success" && "Completed"}
+                    {status === "error" && "Unable to complete this view"}
                   </p>
                   {message && <p className="text-sm text-muted-foreground mt-1">{message}</p>}
                 </div>
@@ -650,30 +648,28 @@ const Earn = () => {
 
         <Card className="glass-card h-fit lg:col-start-2">
           <CardHeader>
-            <CardTitle>Quota & ChÃ­nh sÃ¡ch</CardTitle>
-            <CardDescription>CÃ i Ä‘áº·t pháº§n thÆ°á»Ÿng hiá»‡n táº¡i</CardDescription>
+            <CardTitle>Quota & Policy</CardTitle>
+            <CardDescription>Current reward settings</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             {isLoadingPolicy && <p className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Äang táº£i chÃ­nh sÃ¡ch...</p>}
             {policy && (
               <ul className="space-y-2">
                 <li>
-                  <span className="font-medium">ThÆ°á»Ÿng má»—i lÆ°á»£t:</span>{" "}
+                  <span className="font-medium">Reward per view:</span>{" "}
                   {policy.rewardPerView} xu (xem tá»‘i thiá»ƒu {policy.requiredDuration}s)
+                </li>                <li>
+                  <span className="font-medium">Cooldown:</span> {" "}
+                  {formatSeconds(policy.minInterval)} between attempts on the same device.
                 </li>
                 <li>
-                  <span className="font-medium">Thá»i gian chá»:</span>{" "}
-                  {formatSeconds(policy.minInterval)} giá»¯a cÃ¡c lÆ°á»£t trÃªn cÃ¹ng thiáº¿t bá»‹.
+                  <span className="font-medium">Daily cap per user:</span> {" "}
+                  {policy.effectivePerDay}/{policy.perDay} per day.
                 </li>
                 <li>
-                  <span className="font-medium">Giá»›i háº¡n theo ngÆ°á»i dÃ¹ng:</span>{" "}
-                  {policy.effectivePerDay}/{policy.perDay} lÆ°á»£t má»—i ngÃ y.
-                </li>
-                <li>
-                  <span className="font-medium">Giá»›i háº¡n theo thiáº¿t bá»‹:</span>{" "}
-                  {policy.perDevice} lÆ°á»£t má»—i ngÃ y.
-                </li>
-                {policy.priceFloor !== null && (
+                  <span className="font-medium">Daily cap per device:</span> {" "}
+                  {policy.perDevice} per day.
+                </li>{policy.priceFloor !== null && (
                   <li>
                     <span className="font-medium">GiÃ¡ sÃ n hiá»‡n táº¡i:</span> CPM â‰¥ {policy.priceFloor}
                   </li>
