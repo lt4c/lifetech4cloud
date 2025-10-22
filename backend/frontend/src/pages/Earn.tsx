@@ -495,7 +495,26 @@ const Earn = () => {
         )}
 
         {/* Dialog */}
-        <Dialog open={regOpen} onOpenChange={(o) => { setRegOpen(o); if (!o && regStatus !== "pending") { setRegMinimized(false); persistReg({ open: o, minimized: false }); } }}>
+        <Dialog
+          open={regOpen}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              if (regStatus === "pending") {
+                // When pending, closing should minimize instead of dismissing
+                setRegOpen(false);
+                setRegMinimized(true);
+                persistReg({ open: false, minimized: true });
+              } else {
+                setRegOpen(false);
+                setRegMinimized(false);
+                persistReg({ open: false, minimized: false });
+              }
+            } else {
+              setRegOpen(true);
+              persistReg({ open: true });
+            }
+          }}
+        >
           <DialogContent className="sm:max-w-[640px]">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold tracking-tight">How ?</DialogTitle>
@@ -646,7 +665,7 @@ const Earn = () => {
           </CardContent>
         </Card>
 
-        <Card className="glass-card h-fit lg:col-start-2">
+        <Card className="glass-card h-fit lg:col-span-2">
           <CardHeader>
             <CardTitle>Quota & Policy</CardTitle>
             <CardDescription>Current reward settings</CardDescription>
