@@ -19,8 +19,9 @@ class WorkerClient:
         await self._client.aclose()
 
     def _base(self, worker: Worker | None = None) -> str:
-        if self._base_url:
-            return self._base_url
+        base_url = getattr(self, "_base_url", None)
+        if base_url:
+            return base_url
         if not worker:
             raise ValueError("Either base_url or worker must be provided")
         return worker.base_url.rstrip("/")
@@ -159,14 +160,17 @@ class WorkerClient:
         """Query how many token slots are left on the worker."""
         base = self._base(worker)
         url = urljoin(base + "/", "tokenleft")
-        try:
-            response = await self._client.get(url)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Worker tokenleft check failed",
-            ) from exc
+        # Use a local client to avoid relying on instance initialisation
+        timeout = httpx.Timeout(10.0, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Worker tokenleft check failed",
+                ) from exc
         try:
             payload: Any = response.json()
             total = int((payload or {}).get("totalSlots", 0))
