@@ -393,9 +393,9 @@ const Earn = () => {
         </p>
       </div>
 
-      <div className="grid gap-6">
+      <div className="grid gap-6 max-w-2xl mx-auto">
         {/* Reg Account For Coin card */}
-        <Card className="glass-card h-fit w-full max-w-2xl mx-auto">
+        <Card className="glass-card h-fit w-full">
           <CardHeader className="py-3">
             <CardTitle className="text-base font-semibold">Reg Account For Coin</CardTitle>
             <CardDescription className="text-sm">Tạo tài khoản mới để nhận +15 xu</CardDescription>
