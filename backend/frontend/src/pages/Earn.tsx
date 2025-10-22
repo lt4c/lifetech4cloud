@@ -52,8 +52,14 @@ import type {
 declare global {
   interface Window {
     turnstile?: {
-      render?: (container: HTMLElement | string, options: Record<string, unknown>) => unknown;
-      execute: (siteKey: string, options?: { action?: string; cData?: string }) => Promise<string>;
+      render?: (
+        container: HTMLElement | string,
+        options: Record<string, unknown>,
+      ) => unknown;
+      execute: (
+        siteKey: string,
+        options?: { action?: string; cData?: string },
+      ) => Promise<string>;
     };
     google?: any;
     monetag?: {
@@ -80,7 +86,8 @@ const ensureTurnstile = async (): Promise<void> => {
       script.src = `https://challenges.cloudflare.com/turnstile/v0/api.js?render=${TURNSTILE_SITE_KEY}`;
       script.async = true;
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Không tải được script Turnstile"));
+      script.onerror = () =>
+        reject(new Error("Không tải được script Turnstile"));
       document.head.appendChild(script);
     });
   }
@@ -88,7 +95,8 @@ const ensureTurnstile = async (): Promise<void> => {
 };
 
 const ensureImaSdk = async (): Promise<void> => {
-  if (typeof window === "undefined") throw new Error("IMA SDK cần môi trường trình duyệt");
+  if (typeof window === "undefined")
+    throw new Error("IMA SDK cần môi trường trình duyệt");
   if (window.google?.ima) return;
   if (!imaLoader) {
     imaLoader = new Promise((resolve, reject) => {
@@ -163,7 +171,12 @@ const signPrepareRequest = async (
   timestamp: string,
   placement: string,
 ): Promise<string | null> => {
-  if (!CLIENT_SIGNING_KEY || typeof window === "undefined" || !window.crypto?.subtle) return null;
+  if (
+    !CLIENT_SIGNING_KEY ||
+    typeof window === "undefined" ||
+    !window.crypto?.subtle
+  )
+    return null;
   const encoder = new TextEncoder();
   const keyMaterial = encoder.encode(CLIENT_SIGNING_KEY);
   const cryptoKey = await window.crypto.subtle.importKey(
@@ -173,23 +186,33 @@ const signPrepareRequest = async (
     false,
     ["sign"],
   );
-  const payload = encoder.encode(`${userId}|${clientNonce}|${timestamp}|${placement}`);
+  const payload = encoder.encode(
+    `${userId}|${clientNonce}|${timestamp}|${placement}`,
+  );
   const buffer = await window.crypto.subtle.sign("HMAC", cryptoKey, payload);
-  return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 };
 
 const collectClientHints = (): Record<string, string> => {
   if (typeof navigator === "undefined") return {};
   const hints: Record<string, string> = { ua: navigator.userAgent };
-  const uaData = (navigator as unknown as { userAgentData?: any }).userAgentData;
+  const uaData = (navigator as unknown as { userAgentData?: any })
+    .userAgentData;
   if (uaData) {
     hints.platform = uaData.platform ?? "";
     hints.mobile = String(uaData.mobile ?? false);
-    const brands = uaData.brands ?? uaData.getHighEntropyValues?.(["model", "platformVersion"]);
+    const brands =
+      uaData.brands ??
+      uaData.getHighEntropyValues?.(["model", "platformVersion"]);
     if (Array.isArray(brands)) {
-      hints.brands = brands.map((it: { brand?: string; version?: string }) =>
-        `${it.brand ?? ""}:${it.version ?? ""}`,
-      ).join("|");
+      hints.brands = brands
+        .map(
+          (it: { brand?: string; version?: string }) =>
+            `${it.brand ?? ""}:${it.version ?? ""}`,
+        )
+        .join("|");
     }
   }
   try {
@@ -217,7 +240,27 @@ const providerDisplayName = (provider: string): string => {
   }
 };
 
-type EarnStatus = "idle" | "preparing" | "loading" | "playing" | "verifying" | "success" | "error";
+const normalizeProviderValue = (
+  value: unknown,
+  fallback = "monetag",
+): string => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed) {
+      return trimmed.toLowerCase();
+    }
+  }
+  return fallback;
+};
+
+type EarnStatus =
+  | "idle"
+  | "preparing"
+  | "loading"
+  | "playing"
+  | "verifying"
+  | "success"
+  | "error";
 
 const initialMetrics: RewardMetricsSummary = {
   prepareOk: 0,
@@ -243,7 +286,10 @@ const readPersistedRegState = (): RegPersistedState => {
     const raw = window.localStorage.getItem(REG_STATE_STORAGE_KEY);
     if (!raw) return defaultRegState;
     const parsed = JSON.parse(raw) as Partial<RegPersistedState>;
-    return { open: Boolean(parsed?.open), minimized: Boolean(parsed?.minimized) };
+    return {
+      open: Boolean(parsed?.open),
+      minimized: Boolean(parsed?.minimized),
+    };
   } catch {
     return defaultRegState;
   }
@@ -254,7 +300,10 @@ const writePersistedRegState = (state: RegPersistedState): void => {
   try {
     window.localStorage.setItem(
       REG_STATE_STORAGE_KEY,
-      JSON.stringify({ open: Boolean(state.open), minimized: Boolean(state.minimized) }),
+      JSON.stringify({
+        open: Boolean(state.open),
+        minimized: Boolean(state.minimized),
+      }),
     );
   } catch {}
 };
@@ -268,7 +317,8 @@ const Earn = () => {
   const [status, setStatus] = useState<EarnStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
-  const [metricsSnapshot, setMetricsSnapshot] = useState<RewardMetricsSummary>(initialMetrics);
+  const [metricsSnapshot, setMetricsSnapshot] =
+    useState<RewardMetricsSummary>(initialMetrics);
 
   // Mặc định hiển thị Monetag, user muốn chọn được => luôn show selector
   const [selectedProvider, setSelectedProvider] = useState<string>("monetag");
@@ -281,8 +331,12 @@ const Earn = () => {
   const monetagActiveRef = useRef<boolean>(false);
   const monetagCancelRef = useRef<((reason: Error) => void) | null>(null);
 
-  const [regOpen, setRegOpen] = useState<boolean>(() => readPersistedRegState().open);
-  const [regMinimized, setRegMinimized] = useState<boolean>(() => readPersistedRegState().minimized);
+  const [regOpen, setRegOpen] = useState<boolean>(
+    () => readPersistedRegState().open,
+  );
+  const [regMinimized, setRegMinimized] = useState<boolean>(
+    () => readPersistedRegState().minimized,
+  );
   const [regStatus, setRegStatus] = useState<RegStatus>("idle");
   const [regEmail, setRegEmail] = useState("");
   const [regPass, setRegPass] = useState("");
@@ -300,7 +354,11 @@ const Earn = () => {
   }, []);
 
   // Queries
-  const { data: policy, isLoading: isLoadingPolicy, refetch: refetchPolicy } = useQuery<RewardPolicy>({
+  const {
+    data: policy,
+    isLoading: isLoadingPolicy,
+    refetch: refetchPolicy,
+  } = useQuery<RewardPolicy>({
     queryKey: ["ads-policy"],
     queryFn: fetchRewardPolicy,
     staleTime: 60_000,
@@ -326,14 +384,15 @@ const Earn = () => {
 
   // FIX: TanStack Query v5 yêu cầu { mutationFn } => hết lỗi "No mutationFn found"
   const prepareMutation = useMutation({ mutationFn: prepareRewardedAd });
-  const registerMutation = useMutation({ mutationFn: registerWorkerTokenForCoin });
+  const registerMutation = useMutation({
+    mutationFn: registerWorkerTokenForCoin,
+  });
 
   // Provider options: luôn render ít nhất một lựa chọn, không ẩn selector
   const providerOptions = useMemo(() => {
-    const enabledEntries = Object.entries(policy?.providers ?? {})
-      .filter(([, cfg]) => (cfg as RewardProviderConfig | undefined)?.enabled) as Array<
-      [string, RewardProviderConfig | undefined]
-    >;
+    const enabledEntries = Object.entries(policy?.providers ?? {}).filter(
+      ([, cfg]) => (cfg as RewardProviderConfig | undefined)?.enabled,
+    ) as Array<[string, RewardProviderConfig | undefined]>;
 
     if (enabledEntries.length > 0) return enabledEntries;
 
@@ -341,7 +400,8 @@ const Earn = () => {
     const fallbacks: Array<[string, RewardProviderConfig | undefined]> = [];
     fallbacks.push([
       "monetag",
-      (policy?.providers?.monetag as RewardProviderConfig | undefined) ?? undefined,
+      (policy?.providers?.monetag as RewardProviderConfig | undefined) ??
+        undefined,
     ]);
     if (policy?.providers?.gma) {
       fallbacks.push(["gma", policy.providers.gma as RewardProviderConfig]);
@@ -352,20 +412,26 @@ const Earn = () => {
   const requiredDuration = policy?.requiredDuration ?? 30;
   const minIntervalSeconds = policy?.minInterval ?? 30;
   const monetagProgress =
-    requiredDuration > 0 ? Math.min(100, (monetagElapsed / requiredDuration) * 100) : 0;
+    requiredDuration > 0
+      ? Math.min(100, (monetagElapsed / requiredDuration) * 100)
+      : 0;
 
   useEffect(() => {
     if (!policy) return;
     const enabledKeys = providerOptions.map(([key]) => key);
-    const preferred = (policy.defaultProvider ?? "monetag").toLowerCase();
-    const fallback = enabledKeys.includes(preferred) ? preferred : enabledKeys[0] ?? "monetag";
+    const preferred = normalizeProviderValue(policy.defaultProvider);
+    const fallback = enabledKeys.includes(preferred)
+      ? preferred
+      : (enabledKeys[0] ?? "monetag");
     setSelectedProvider((cur) => (enabledKeys.includes(cur) ? cur : fallback));
     setActiveProvider((cur) => (enabledKeys.includes(cur) ? cur : fallback));
   }, [policy, providerOptions]);
 
   useEffect(() => {
     if (!["idle", "success", "error"].includes(status)) return;
-    setActiveProvider((cur) => (cur === selectedProvider ? cur : selectedProvider));
+    setActiveProvider((cur) =>
+      cur === selectedProvider ? cur : selectedProvider,
+    );
   }, [selectedProvider, status]);
 
   const onRegStart = useCallback(async () => {
@@ -395,8 +461,12 @@ const Earn = () => {
       let detailMessage = "Gửi đăng ký thất bại, thử lại sau.";
       if (error instanceof ApiError) {
         const detail = (error.data as { detail?: string } | undefined)?.detail;
-        if (detail === "duplicate_mail") detailMessage = "Email đã được gửi trước đó.";
-        else if (detail === "no_worker_available" || detail === "no_tokens_available")
+        if (detail === "duplicate_mail")
+          detailMessage = "Email đã được gửi trước đó.";
+        else if (
+          detail === "no_worker_available" ||
+          detail === "no_tokens_available"
+        )
           detailMessage = "Dịch vụ tạm quá tải, thử lại sau.";
         else if (detail === "worker_error" || detail === "worker_rejected")
           detailMessage = "Worker từ chối yêu cầu, thử lại ít phút nữa.";
@@ -408,7 +478,16 @@ const Earn = () => {
       setRegStatus("error");
       setRegMsg(detailMessage);
     }
-  }, [regEmail, regPass, regConfirm, registerMutation, persistReg, refresh, refetchWallet, refetchMetrics]);
+  }, [
+    regEmail,
+    regPass,
+    regConfirm,
+    registerMutation,
+    persistReg,
+    refresh,
+    refetchWallet,
+    refetchMetrics,
+  ]);
 
   useEffect(() => {
     persistReg({ open: regOpen, minimized: regMinimized });
@@ -508,7 +587,12 @@ const Earn = () => {
     [],
   );
 
-  useEffect(() => () => { stopMonetagWatcher(); }, [stopMonetagWatcher]);
+  useEffect(
+    () => () => {
+      stopMonetagWatcher();
+    },
+    [stopMonetagWatcher],
+  );
 
   const runImaAd = useCallback(async (adTagUrl: string) => {
     await ensureImaSdk();
@@ -520,44 +604,69 @@ const Earn = () => {
     }
 
     return new Promise<void>((resolve, reject) => {
-      const adDisplayContainer = new google.ima.AdDisplayContainer(containerElement, videoElement);
+      const adDisplayContainer = new google.ima.AdDisplayContainer(
+        containerElement,
+        videoElement,
+      );
       try {
         adDisplayContainer.initialize();
       } catch {}
 
       const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
-      adsLoader.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, (event: any) => {
-        adsLoader.destroy();
-        reject(new Error(event.getError()?.toString() ?? "Lỗi phát IMA"));
-      });
+      adsLoader.addEventListener(
+        google.ima.AdErrorEvent.Type.AD_ERROR,
+        (event: any) => {
+          adsLoader.destroy();
+          reject(new Error(event.getError()?.toString() ?? "Lỗi phát IMA"));
+        },
+      );
 
-      adsLoader.addEventListener(google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, (event: any) => {
-        try {
-          const adsManager = event.getAdsManager(videoElement);
-          adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, () => videoElement.pause());
-          adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () => setStatus("playing"));
-          adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () => resolve());
-          adsManager.addEventListener(google.ima.AdEvent.Type.ALL_ADS_COMPLETED, () => resolve());
-          adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, (err: any) => {
-            reject(new Error(err.getError()?.toString() ?? "Lỗi phát quảng cáo"));
-          });
-          adsManager.init(
-            containerElement.clientWidth || 640,
-            containerElement.clientHeight || 360,
-            google.ima.ViewMode.NORMAL,
-          );
-          adsManager.start();
-        } catch (error) {
-          reject(error instanceof Error ? error : new Error(String(error)));
-        }
-      });
+      adsLoader.addEventListener(
+        google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+        (event: any) => {
+          try {
+            const adsManager = event.getAdsManager(videoElement);
+            adsManager.addEventListener(
+              google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED,
+              () => videoElement.pause(),
+            );
+            adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () =>
+              setStatus("playing"),
+            );
+            adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () =>
+              resolve(),
+            );
+            adsManager.addEventListener(
+              google.ima.AdEvent.Type.ALL_ADS_COMPLETED,
+              () => resolve(),
+            );
+            adsManager.addEventListener(
+              google.ima.AdErrorEvent.Type.AD_ERROR,
+              (err: any) => {
+                reject(
+                  new Error(err.getError()?.toString() ?? "Lỗi phát quảng cáo"),
+                );
+              },
+            );
+            adsManager.init(
+              containerElement.clientWidth || 640,
+              containerElement.clientHeight || 360,
+              google.ima.ViewMode.NORMAL,
+            );
+            adsManager.start();
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        },
+      );
 
       const request = new google.ima.AdsRequest();
       request.adTagUrl = adTagUrl;
       request.linearAdSlotWidth = containerElement.clientWidth || 640;
       request.linearAdSlotHeight = containerElement.clientHeight || 360;
       request.nonLinearAdSlotWidth = containerElement.clientWidth || 640;
-      request.nonLinearAdSlotHeight = (containerElement.clientHeight || 360) / 3;
+      request.nonLinearAdSlotHeight =
+        (containerElement.clientHeight || 360) / 3;
       request.setAdWillAutoPlay(true);
       request.setAdWillPlayMuted(false);
 
@@ -570,7 +679,11 @@ const Earn = () => {
   }, []);
 
   const runMonetagFlow = useCallback(
-    async (session: PrepareAdResponse, requiredSeconds: number, minInterval: number) => {
+    async (
+      session: PrepareAdResponse,
+      requiredSeconds: number,
+      minInterval: number,
+    ) => {
       if (!session.ticket || !session.zoneId || !session.scriptUrl) {
         throw new Error("Cấu hình Monetag chưa đầy đủ");
       }
@@ -597,7 +710,11 @@ const Earn = () => {
         });
         const gained = Number(result.added ?? 0);
         setStatus("success");
-        setMessage(gained > 0 ? `+${gained} xu đã được cộng.` : "Xác minh xong. Số dư sẽ cập nhật sớm.");
+        setMessage(
+          gained > 0
+            ? `+${gained} xu đã được cộng.`
+            : "Xác minh xong. Số dư sẽ cập nhật sớm.",
+        );
         setCooldownUntil(Date.now() + minInterval * 1000);
         setMonetagElapsed(requiredSeconds);
         setMonetagPaused(false);
@@ -609,7 +726,13 @@ const Earn = () => {
         stopMonetagWatcher();
       }
     },
-    [waitForMonetagDuration, refresh, refetchWallet, refetchMetrics, stopMonetagWatcher],
+    [
+      waitForMonetagDuration,
+      refresh,
+      refetchWallet,
+      refetchMetrics,
+      stopMonetagWatcher,
+    ],
   );
 
   const waitForWalletUpdate = useCallback(
@@ -636,7 +759,9 @@ const Earn = () => {
     }
     if (cooldownUntil && cooldownUntil > Date.now()) {
       setStatus("error");
-      setMessage(`Bạn đang trong thời gian chờ ${formatSeconds(cooldownRemaining)}.`);
+      setMessage(
+        `Bạn đang trong thời gian chờ ${formatSeconds(cooldownRemaining)}.`,
+      );
       return;
     }
 
@@ -652,10 +777,18 @@ const Earn = () => {
 
     const clientNonce = crypto.randomUUID();
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const signature = await signPrepareRequest(profile.id, clientNonce, timestamp, PLACEMENT);
+    const signature = await signPrepareRequest(
+      profile.id,
+      clientNonce,
+      timestamp,
+      PLACEMENT,
+    );
 
     const hints = collectClientHints();
-    const providerChoice = (selectedProvider || policy.defaultProvider || "monetag").toLowerCase();
+    const providerChoice = normalizeProviderValue(
+      selectedProvider,
+      normalizeProviderValue(policy?.defaultProvider),
+    );
 
     const startingBalance = walletBalance;
     let prepareResponse: PrepareAdResponse;
@@ -672,9 +805,25 @@ const Earn = () => {
     } catch (error) {
       setStatus("error");
       if (error instanceof ApiError) {
-        const detail = (error.data as { detail?: string })?.detail ?? error.message;
-        setMessage(detail);
-        if (detail?.toLowerCase().includes("cooldown")) {
+        const rawDetail = (error.data as { detail?: unknown } | undefined)
+          ?.detail;
+        let detailMessage: string | undefined;
+        if (typeof rawDetail === "string") {
+          detailMessage = rawDetail;
+        } else if (Array.isArray(rawDetail) && rawDetail.length > 0) {
+          const first = rawDetail[0] as { msg?: string } | string;
+          if (typeof first === "string") {
+            detailMessage = first;
+          } else if (typeof first?.msg === "string") {
+            detailMessage = first.msg;
+          }
+        }
+        detailMessage ??= error.message;
+        setMessage(detailMessage);
+        if (
+          typeof detailMessage === "string" &&
+          detailMessage.toLowerCase().includes("cooldown")
+        ) {
           setCooldownUntil(Date.now() + minIntervalSeconds * 1000);
         }
       } else if (error instanceof Error) {
@@ -685,15 +834,23 @@ const Earn = () => {
       return;
     }
 
-    const effectiveProvider = (prepareResponse.provider ?? providerChoice).toLowerCase();
+    const effectiveProvider = normalizeProviderValue(
+      prepareResponse.provider ?? providerChoice,
+    );
     setActiveProvider(effectiveProvider);
 
     if (effectiveProvider === "monetag") {
       try {
-        await runMonetagFlow(prepareResponse, requiredDuration, minIntervalSeconds);
+        await runMonetagFlow(
+          prepareResponse,
+          requiredDuration,
+          minIntervalSeconds,
+        );
       } catch (error) {
         setStatus("error");
-        setMessage(error instanceof Error ? error.message : "Monetag session thất bại.");
+        setMessage(
+          error instanceof Error ? error.message : "Monetag session thất bại.",
+        );
         setMonetagElapsed(0);
         setMonetagPaused(false);
       }
@@ -708,7 +865,8 @@ const Earn = () => {
         setMonetagElapsed(0);
         setMonetagPaused(false);
 
-        if (!prepareResponse.adTagUrl) throw new Error("Thiếu adTagUrl cho Google Ads.");
+        if (!prepareResponse.adTagUrl)
+          throw new Error("Thiếu adTagUrl cho Google Ads.");
         await runImaAd(prepareResponse.adTagUrl);
 
         setStatus("verifying");
@@ -729,7 +887,11 @@ const Earn = () => {
         }
       } catch (error) {
         setStatus("error");
-        setMessage(error instanceof Error ? error.message : "Không phát được quảng cáo, thử lại.");
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Không phát được quảng cáo, thử lại.",
+        );
       }
       return;
     }
@@ -760,7 +922,8 @@ const Earn = () => {
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold">Xem quảng cáo nhận thưởng</h1>
         <p className="text-muted-foreground">
-          Xem đủ {requiredDuration}s để nhận {policy?.rewardPerView ?? 5} xu. Phần thưởng chỉ cộng sau khi máy chủ xác minh.
+          Xem đủ {requiredDuration}s để nhận {policy?.rewardPerView ?? 5} xu.
+          Phần thưởng chỉ cộng sau khi máy chủ xác minh.
         </p>
       </div>
 
@@ -768,8 +931,12 @@ const Earn = () => {
         {/* Reg Account For Coin card */}
         <Card className="glass-card h-fit w-full">
           <CardHeader className="py-3">
-            <CardTitle className="text-base font-semibold">Reg Account For Coin</CardTitle>
-            <CardDescription className="text-sm">Tạo tài khoản mới, nhận +15 xu</CardDescription>
+            <CardTitle className="text-base font-semibold">
+              Reg Account For Coin
+            </CardTitle>
+            <CardDescription className="text-sm">
+              Tạo tài khoản mới, nhận +15 xu
+            </CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
             <Button
@@ -824,7 +991,9 @@ const Earn = () => {
         >
           <DialogContent className="sm:max-w-[720px] md:max-w-[820px]">
             <DialogHeader>
-              <DialogTitle className="text-xl font-bold tracking-tight">Hướng dẫn</DialogTitle>
+              <DialogTitle className="text-xl font-bold tracking-tight">
+                Hướng dẫn
+              </DialogTitle>
             </DialogHeader>
 
             {regStatus === "idle" && (
@@ -868,9 +1037,14 @@ const Earn = () => {
                     className="h-11 text-base"
                   />
                   <div className="flex items-center space-x-3">
-                    <Checkbox id="confirm" checked={regConfirm} onCheckedChange={(v) => setRegConfirm(Boolean(v))} />
+                    <Checkbox
+                      id="confirm"
+                      checked={regConfirm}
+                      onCheckedChange={(v) => setRegConfirm(Boolean(v))}
+                    />
                     <label htmlFor="confirm" className="text-sm md:text-base">
-                      Xác nhận đây không phải tài khoản chính của bạn vì lý do an toàn.
+                      Xác nhận đây không phải tài khoản chính của bạn vì lý do
+                      an toàn.
                     </label>
                   </div>
                 </div>
@@ -878,12 +1052,18 @@ const Earn = () => {
                 <div className="flex items-center justify-center gap-3">
                   <Button
                     className="h-11 px-6 text-base"
-                    disabled={!regEmail || !regPass || !regConfirm || registerMutation.isPending}
+                    disabled={
+                      !regEmail ||
+                      !regPass ||
+                      !regConfirm ||
+                      registerMutation.isPending
+                    }
                     onClick={onRegStart}
                   >
                     {registerMutation.isPending ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang gửi...
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang
+                        gửi...
                       </>
                     ) : (
                       <>Xong</>
@@ -897,7 +1077,8 @@ const Earn = () => {
               <div className="space-y-4 text-center">
                 <div className="flex items-start justify-between">
                   <p className="whitespace-pre-line text-base md:text-lg font-medium text-left">
-                    Hệ thống đang xác nhận{"\n"}vui lòng chờ...{"\n"}và kiểm tra email xác minh nếu có
+                    Hệ thống đang xác nhận{"\n"}vui lòng chờ...{"\n"}và kiểm tra
+                    email xác minh nếu có
                   </p>
                   <Button
                     aria-label="Thu nhỏ"
@@ -914,7 +1095,8 @@ const Earn = () => {
                   </Button>
                 </div>
                 <div className="flex items-center justify-center text-base text-muted-foreground">
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Đang xử lý...
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Đang xử
+                  lý...
                 </div>
               </div>
             )}
@@ -923,7 +1105,9 @@ const Earn = () => {
               <div className="space-y-3 text-center">
                 <p className="text-2xl font-bold">Hoàn tất</p>
                 <p className="text-base">Cảm ơn bạn</p>
-                <p className="text-lg font-semibold text-emerald-500">+15 xu đã cộng</p>
+                <p className="text-lg font-semibold text-emerald-500">
+                  +15 xu đã cộng
+                </p>
                 <div className="flex justify-center gap-2">
                   <Button
                     className="h-10 px-6"
@@ -943,7 +1127,9 @@ const Earn = () => {
 
             {regStatus === "error" && (
               <div className="space-y-3 text-center">
-                <p className="text-base text-destructive">{regMsg ?? "Thất bại"}</p>
+                <p className="text-base text-destructive">
+                  {regMsg ?? "Thất bại"}
+                </p>
                 <div className="flex justify-center gap-2">
                   <Button
                     className="h-10 px-6"
@@ -964,18 +1150,24 @@ const Earn = () => {
         <Card className="glass-card w-full">
           <CardHeader>
             <CardTitle>Nhận +{policy?.rewardPerView ?? 5} xu</CardTitle>
-            <CardDescription>Mỗi lượt hợp lệ sẽ được cộng xu sau khi xác minh.</CardDescription>
+            <CardDescription>
+              Mỗi lượt hợp lệ sẽ được cộng xu sau khi xác minh.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 rounded-lg border border-border/40 px-3 py-2">
-                <span className="text-sm text-muted-foreground">Số dư hiện tại</span>
+                <span className="text-sm text-muted-foreground">
+                  Số dư hiện tại
+                </span>
                 <Badge variant="secondary" className="text-base font-semibold">
                   {walletBalance} xu
                 </Badge>
               </div>
               <div className="flex items-center gap-2 rounded-lg border border-border/40 px-3 py-2">
-                <span className="text-sm text-muted-foreground">Thưởng mỗi lượt</span>
+                <span className="text-sm text-muted-foreground">
+                  Thưởng mỗi lượt
+                </span>
                 <Badge variant="outline">{policy?.rewardPerView ?? 5} xu</Badge>
               </div>
             </div>
@@ -995,7 +1187,9 @@ const Earn = () => {
                       <div
                         key={value}
                         className={`flex items-center gap-2 rounded-md border border-border/40 px-3 py-2 transition ring-offset-background ${
-                          selectedProvider === value ? "ring-1 ring-primary" : ""
+                          selectedProvider === value
+                            ? "ring-1 ring-primary"
+                            : ""
                         }`}
                       >
                         <RadioGroupItem id={id} value={value} />
@@ -1004,10 +1198,14 @@ const Earn = () => {
                             {providerDisplayName(value)}
                           </Label>
                           <span className="text-xs text-muted-foreground">
-                            {value === "monetag" ? "Đếm thời gian client + vé server" : "Google IMA + xác minh server"}
+                            {value === "monetag"
+                              ? "Đếm thời gian client + vé server"
+                              : "Google IMA + xác minh server"}
                           </span>
                           {value === "monetag" && cfg?.zoneId && (
-                            <span className="text-xs text-muted-foreground">Zone {cfg.zoneId}</span>
+                            <span className="text-xs text-muted-foreground">
+                              Zone {cfg.zoneId}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1031,7 +1229,8 @@ const Earn = () => {
               >
                 {prepareMutation.isLoading || status === "loading" ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang chuẩn bị quảng cáo
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang chuẩn
+                    bị quảng cáo
                   </>
                 ) : status === "playing" ? (
                   <>
@@ -1039,14 +1238,16 @@ const Earn = () => {
                   </>
                 ) : (
                   <>
-                    <Play className="mr-2 h-4 w-4" /> Xem quảng cáo (+{policy?.rewardPerView ?? 5} xu)
+                    <Play className="mr-2 h-4 w-4" /> Xem quảng cáo (+
+                    {policy?.rewardPerView ?? 5} xu)
                   </>
                 )}
               </Button>
 
               {cooldownUntil && cooldownUntil > Date.now() && (
                 <div className="text-sm text-muted-foreground">
-                  Vui lòng đợi {formatSeconds(cooldownRemaining)} trước lượt tiếp theo.
+                  Vui lòng đợi {formatSeconds(cooldownRemaining)} trước lượt
+                  tiếp theo.
                 </div>
               )}
             </div>
@@ -1065,12 +1266,17 @@ const Earn = () => {
                     {status === "idle" && "Sẵn sàng nhận thưởng"}
                     {status === "preparing" && "Đang chuẩn bị quảng cáo..."}
                     {status === "loading" && "Đang tải quảng cáo..."}
-                    {status === "playing" && "Quảng cáo đang phát, vui lòng xem hết để nhận thưởng."}
+                    {status === "playing" &&
+                      "Quảng cáo đang phát, vui lòng xem hết để nhận thưởng."}
                     {status === "verifying" && "Đang xác minh phần thưởng..."}
                     {status === "success" && "Hoàn tất"}
                     {status === "error" && "Không thể hoàn thành lượt xem"}
                   </p>
-                  {message && <p className="text-sm text-muted-foreground mt-1">{message}</p>}
+                  {message && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {message}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1080,9 +1286,14 @@ const Earn = () => {
                 <Progress value={monetagProgress} />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>
-                    {Math.min(monetagElapsed, requiredDuration)}s / {requiredDuration}s
+                    {Math.min(monetagElapsed, requiredDuration)}s /{" "}
+                    {requiredDuration}s
                   </span>
-                  {monetagPaused && <span className="font-medium text-amber-500">Giữ tab này ở trạng thái hiển thị</span>}
+                  {monetagPaused && (
+                    <span className="font-medium text-amber-500">
+                      Giữ tab này ở trạng thái hiển thị
+                    </span>
+                  )}
                 </div>
               </div>
             )}
@@ -1091,16 +1302,26 @@ const Earn = () => {
               <div
                 ref={monetagContainerRef}
                 className={`absolute inset-0 flex h-full w-full items-center justify-center transition-opacity ${
-                  activeProvider === "monetag" ? "opacity-100" : "pointer-events-none opacity-0"
+                  activeProvider === "monetag"
+                    ? "opacity-100"
+                    : "pointer-events-none opacity-0"
                 }`}
               />
               <div
                 ref={adContainerRef}
                 className={`absolute inset-0 flex h-full w-full transition-opacity ${
-                  activeProvider === "gma" ? "opacity-100" : "pointer-events-none opacity-0"
+                  activeProvider === "gma"
+                    ? "opacity-100"
+                    : "pointer-events-none opacity-0"
                 }`}
               >
-                <video ref={videoRef} className="h-full w-full object-contain" playsInline muted controls={false} />
+                <video
+                  ref={videoRef}
+                  className="h-full w-full object-contain"
+                  playsInline
+                  muted
+                  controls={false}
+                />
               </div>
             </div>
           </CardContent>
@@ -1114,29 +1335,34 @@ const Earn = () => {
           <CardContent className="space-y-4 text-sm">
             {isLoadingPolicy && (
               <p className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> Đang tải chính sách...
+                <Loader2 className="h-4 w-4 animate-spin" /> Đang tải chính
+                sách...
               </p>
             )}
             {policy && (
               <ul className="space-y-2">
                 <li>
                   <span className="font-medium">Thưởng mỗi lượt:</span>{" "}
-                  {policy.rewardPerView} xu, xem tối thiểu {policy.requiredDuration}s
+                  {policy.rewardPerView} xu, xem tối thiểu{" "}
+                  {policy.requiredDuration}s
                 </li>
                 <li>
                   <span className="font-medium">Thời gian chờ:</span>{" "}
-                  {formatSeconds(policy.minInterval)} giữa các lượt trên cùng thiết bị
+                  {formatSeconds(policy.minInterval)} giữa các lượt trên cùng
+                  thiết bị
                 </li>
                 <li>
                   <span className="font-medium">Giới hạn theo người dùng:</span>{" "}
                   {policy.effectivePerDay}/{policy.perDay} lượt mỗi ngày
                 </li>
                 <li>
-                  <span className="font-medium">Giới hạn theo thiết bị:</span> {policy.perDevice} lượt mỗi ngày
+                  <span className="font-medium">Giới hạn theo thiết bị:</span>{" "}
+                  {policy.perDevice} lượt mỗi ngày
                 </li>
                 {policy.priceFloor !== null && (
                   <li>
-                    <span className="font-medium">Giá sàn hiện tại:</span> CPM {policy.priceFloor}
+                    <span className="font-medium">Giá sàn hiện tại:</span> CPM{" "}
+                    {policy.priceFloor}
                   </li>
                 )}
               </ul>
@@ -1145,7 +1371,11 @@ const Earn = () => {
               <div className="flex items-center gap-2 text-destructive">
                 <AlertCircle className="h-4 w-4" />
                 Không tải được cấu hình thưởng.{" "}
-                <button type="button" onClick={() => refetchPolicy()} className="underline">
+                <button
+                  type="button"
+                  onClick={() => refetchPolicy()}
+                  className="underline"
+                >
                   Thử lại
                 </button>
               </div>

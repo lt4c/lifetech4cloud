@@ -27,7 +27,10 @@ import type {
   RewardMetricsSummary,
 } from "./types";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(
+  /\/+$/,
+  "",
+);
 const ADMIN_API_PREFIX = "/api/v1/admin";
 const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE"]);
 const csrfTokenCache = new Map<string, string>();
@@ -44,27 +47,46 @@ const bytesToBase64 = (bytes: Uint8Array): string => {
   bytes.forEach((byte) => {
     binary += String.fromCharCode(byte);
   });
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/u, "");
 };
 
-const bufferToBase64 = (buffer: ArrayBuffer): string => bytesToBase64(new Uint8Array(buffer));
+const bufferToBase64 = (buffer: ArrayBuffer): string =>
+  bytesToBase64(new Uint8Array(buffer));
 
-const deriveRequestSignature = async (csrfToken: string, timestamp: string): Promise<string> => {
+const deriveRequestSignature = async (
+  csrfToken: string,
+  timestamp: string,
+): Promise<string> => {
   const data = textEncoder.encode(`${csrfToken}:${timestamp}`);
   const digest = await crypto.subtle.digest("SHA-256", data);
   return bufferToHex(digest);
 };
 
 const deriveEncryptionKey = async (csrfToken: string) => {
-  const material = await crypto.subtle.digest("SHA-256", textEncoder.encode(csrfToken));
-  return crypto.subtle.importKey("raw", material, "AES-GCM", false, ["encrypt"]);
+  const material = await crypto.subtle.digest(
+    "SHA-256",
+    textEncoder.encode(csrfToken),
+  );
+  return crypto.subtle.importKey("raw", material, "AES-GCM", false, [
+    "encrypt",
+  ]);
 };
 
-const encryptAdminPayload = async (payload: unknown, csrfToken: string): Promise<string> => {
+const encryptAdminPayload = async (
+  payload: unknown,
+  csrfToken: string,
+): Promise<string> => {
   const key = await deriveEncryptionKey(csrfToken);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = textEncoder.encode(JSON.stringify(payload));
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    plaintext,
+  );
   return `${bytesToBase64(iv)}.${bufferToBase64(ciphertext)}`;
 };
 
@@ -91,7 +113,9 @@ const notifyAdminForbidden = () => {
   });
 };
 
-export const subscribeAdminForbidden = (listener: AdminForbiddenListener): (() => void) => {
+export const subscribeAdminForbidden = (
+  listener: AdminForbiddenListener,
+): (() => void) => {
   adminForbiddenListeners.add(listener);
   if (adminAccessRevoked) {
     try {
@@ -179,7 +203,9 @@ const fetchCsrfToken = async (path: string): Promise<string> => {
       notifyAdminForbidden();
     }
     const message =
-      (data as { detail?: string })?.detail ?? response.statusText ?? "Failed to fetch CSRF token.";
+      (data as { detail?: string })?.detail ??
+      response.statusText ??
+      "Failed to fetch CSRF token.";
     throw new ApiError(message, response.status, data);
   }
   const token = (data as { token?: string })?.token;
@@ -190,7 +216,10 @@ const fetchCsrfToken = async (path: string): Promise<string> => {
   return token;
 };
 
-const apiFetch = async <T>(path: string, init?: RequestInit & { skipCsrf?: boolean }): Promise<T> => {
+const apiFetch = async <T>(
+  path: string,
+  init?: RequestInit & { skipCsrf?: boolean },
+): Promise<T> => {
   const url = buildUrl(path);
   const headers = new Headers();
   headers.set("Accept", "application/json");
@@ -216,11 +245,21 @@ const apiFetch = async <T>(path: string, init?: RequestInit & { skipCsrf?: boole
       headers.set("X-CSRF-Token", csrfToken);
       const timestamp = Date.now().toString();
       headers.set("X-Request-Timestamp", timestamp);
-      headers.set("X-Request-Signature", await deriveRequestSignature(csrfToken, timestamp));
+      headers.set(
+        "X-Request-Signature",
+        await deriveRequestSignature(csrfToken, timestamp),
+      );
 
-      const contentType = headers.get("Content-Type") ?? headers.get("content-type");
-      const shouldEncryptPayload = csrfPath.startsWith(`${ADMIN_API_PREFIX}/users`);
-      if (shouldEncryptPayload && contentType?.includes("application/json") && typeof config.body === "string") {
+      const contentType =
+        headers.get("Content-Type") ?? headers.get("content-type");
+      const shouldEncryptPayload = csrfPath.startsWith(
+        `${ADMIN_API_PREFIX}/users`,
+      );
+      if (
+        shouldEncryptPayload &&
+        contentType?.includes("application/json") &&
+        typeof config.body === "string"
+      ) {
         const parsedBody = tryParseJson(config.body);
         if (parsedBody && typeof parsedBody === "object") {
           headers.set("X-Payload-Encrypted", "aes-gcm");
@@ -253,16 +292,26 @@ const apiFetch = async <T>(path: string, init?: RequestInit & { skipCsrf?: boole
       }
       notifyAdminForbidden();
     }
-    const message = (data as { detail?: string })?.detail ?? response.statusText ?? "Request failed";
+    const message =
+      (data as { detail?: string })?.detail ??
+      response.statusText ??
+      "Request failed";
     throw new ApiError(message, response.status, data);
   }
   if (parseError) {
-    throw new ApiError("Failed to parse response as JSON", response.status, rawText);
+    throw new ApiError(
+      "Failed to parse response as JSON",
+      response.status,
+      rawText,
+    );
   }
   return data as T;
 };
 
-const apiFetchRaw = async (path: string, init?: RequestInit): Promise<string> => {
+const apiFetchRaw = async (
+  path: string,
+  init?: RequestInit,
+): Promise<string> => {
   const url = buildUrl(path);
   const response = await fetch(url, {
     ...init,
@@ -288,7 +337,10 @@ export const fetchProfile = async (): Promise<UserProfile | null> => {
   }
 };
 
-export const updateProfile = async (payload: { display_name?: string | null; phone_number?: string | null }): Promise<UserProfile> => {
+export const updateProfile = async (payload: {
+  display_name?: string | null;
+  phone_number?: string | null;
+}): Promise<UserProfile> => {
   const body = JSON.stringify(payload);
   return apiFetch<UserProfile>("/me", {
     method: "PATCH",
@@ -340,9 +392,7 @@ export const prepareRewardedAd = async ({
   if (turnstileToken) {
     bodyPayload.turnstileToken = turnstileToken;
   }
-  if (signature) {
-    bodyPayload.signature = signature;
-  }
+  bodyPayload.signature = signature ?? "";
   if (hints && Object.keys(hints).length > 0) {
     bodyPayload.hints = hints;
   }
@@ -368,11 +418,14 @@ export const completeMonetagAd = async (payload: {
     deviceHash: payload.deviceHash,
     provider: payload.provider ?? "monetag",
   });
-  return apiFetch<{ ok: boolean; added: number; balance: number }>("/ads/complete", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body,
-  });
+  return apiFetch<{ ok: boolean; added: number; balance: number }>(
+    "/ads/complete",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    },
+  );
 };
 
 export const fetchRewardMetrics = async (): Promise<RewardMetricsSummary> => {
@@ -410,7 +463,9 @@ export const fetchRewardMetrics = async (): Promise<RewardMetricsSummary> => {
       continue;
     }
     if (line.startsWith("rewarded_ads_prepare_total")) {
-      const match = line.match(/^rewarded_ads_prepare_total\{([^}]*)\}\s+([0-9eE+.\-]+)$/);
+      const match = line.match(
+        /^rewarded_ads_prepare_total\{([^}]*)\}\s+([0-9eE+.\-]+)$/,
+      );
       if (!match) {
         continue;
       }
@@ -424,7 +479,9 @@ export const fetchRewardMetrics = async (): Promise<RewardMetricsSummary> => {
       continue;
     }
     if (line.startsWith("rewarded_ads_ssv_total")) {
-      const match = line.match(/^rewarded_ads_ssv_total\{([^}]*)\}\s+([0-9eE+.\-]+)$/);
+      const match = line.match(
+        /^rewarded_ads_ssv_total\{([^}]*)\}\s+([0-9eE+.\-]+)$/,
+      );
       if (!match) {
         continue;
       }
@@ -449,7 +506,9 @@ export const fetchRewardMetrics = async (): Promise<RewardMetricsSummary> => {
       continue;
     }
     if (line.startsWith("rewarded_ads_reward_amount_total")) {
-      const match = line.match(/^rewarded_ads_reward_amount_total\{[^}]*\}\s+([0-9eE+.\-]+)$/);
+      const match = line.match(
+        /^rewarded_ads_reward_amount_total\{[^}]*\}\s+([0-9eE+.\-]+)$/,
+      );
       if (!match) {
         continue;
       }
@@ -505,16 +564,24 @@ export const createVpsSession = async ({
     "Content-Type": "application/json",
     "Idempotency-Key": idempotencyKey,
   };
-  const data = await apiFetch<{ session: VpsSession }>("/vps/purchase-and-create", {
-    method: "POST",
-    headers,
-    body: payload,
-  });
+  const data = await apiFetch<{ session: VpsSession }>(
+    "/vps/purchase-and-create",
+    {
+      method: "POST",
+      headers,
+      body: payload,
+    },
+  );
   return data.session;
 };
 
-export const stopVpsSession = async (sessionId: string): Promise<VpsSession> => {
-  const data = await apiFetch<{ session: VpsSession }>(`/vps/sessions/${sessionId}/stop`, { method: "POST" });
+export const stopVpsSession = async (
+  sessionId: string,
+): Promise<VpsSession> => {
+  const data = await apiFetch<{ session: VpsSession }>(
+    `/vps/sessions/${sessionId}/stop`,
+    { method: "POST" },
+  );
   return data.session;
 };
 
@@ -522,11 +589,19 @@ export const deleteVpsSession = async (sessionId: string): Promise<void> => {
   await apiFetch<void>(`/vps/sessions/${sessionId}`, { method: "DELETE" });
 };
 
-export const fetchVpsSessionLog = async (sessionId: string): Promise<string> => {
-  const response = await fetch(buildUrl(`/vps/sessions/${sessionId}/log`), { credentials: "include" });
+export const fetchVpsSessionLog = async (
+  sessionId: string,
+): Promise<string> => {
+  const response = await fetch(buildUrl(`/vps/sessions/${sessionId}/log`), {
+    credentials: "include",
+  });
   if (!response.ok) {
     const text = await response.text();
-    throw new ApiError(text || response.statusText || "Request failed", response.status, text);
+    throw new ApiError(
+      text || response.statusText || "Request failed",
+      response.status,
+      text,
+    );
   }
   return await response.text();
 };
@@ -537,7 +612,9 @@ export const fetchSupportThreads = async (): Promise<SupportThread[]> => {
   return data.threads ?? [];
 };
 
-export const refreshSupportThread = async (threadId: string): Promise<SupportThread> => {
+export const refreshSupportThread = async (
+  threadId: string,
+): Promise<SupportThread> => {
   return apiFetch<SupportThread>(`/support/threads/${threadId}`);
 };
 
@@ -597,10 +674,14 @@ export const fetchAdminSupportThreads = async (
   status?: SupportThread["status"],
 ): Promise<SupportThreadSummary[]> => {
   const query = status ? `?status=${encodeURIComponent(status)}` : "";
-  return apiFetch<SupportThreadSummary[]>(`/api/v1/admin/support/threads${query}`);
+  return apiFetch<SupportThreadSummary[]>(
+    `/api/v1/admin/support/threads${query}`,
+  );
 };
 
-export const fetchAdminSupportThread = async (id: string): Promise<SupportThread> => {
+export const fetchAdminSupportThread = async (
+  id: string,
+): Promise<SupportThread> => {
   return apiFetch<SupportThread>(`/api/v1/admin/support/threads/${id}`);
 };
 
@@ -636,7 +717,9 @@ const toSearchParams = (params: AdminUsersQuery): string => {
   return serialized ? `?${serialized}` : "";
 };
 
-export const fetchAdminUsers = async (params: AdminUsersQuery = {}): Promise<AdminUsersResponse> => {
+export const fetchAdminUsers = async (
+  params: AdminUsersQuery = {},
+): Promise<AdminUsersResponse> => {
   const query = toSearchParams(params);
   return apiFetch<AdminUsersResponse>(`/api/v1/admin/users${query}`);
 };
@@ -685,7 +768,11 @@ export const updateAdminUser = async (
 
 export const updateAdminUserCoins = async (
   userId: string,
-  payload: { op: "add" | "sub" | "set"; amount: number; reason?: string | null },
+  payload: {
+    op: "add" | "sub" | "set";
+    amount: number;
+    reason?: string | null;
+  },
 ): Promise<AdminUser> => {
   const body = JSON.stringify(payload);
   return apiFetch<AdminUser>(`/api/v1/admin/users/${userId}/coins`, {
@@ -699,7 +786,10 @@ export const deleteAdminUser = async (userId: string): Promise<void> => {
   await apiFetch<void>(`/api/v1/admin/users/${userId}`, { method: "DELETE" });
 };
 
-export const assignUserRoles = async (userId: string, roleIds: string[]): Promise<AdminUser> => {
+export const assignUserRoles = async (
+  userId: string,
+  roleIds: string[],
+): Promise<AdminUser> => {
   const body = JSON.stringify({ role_ids: roleIds });
   return apiFetch<AdminUser>(`/api/v1/admin/users/${userId}/roles`, {
     method: "POST",
@@ -708,7 +798,10 @@ export const assignUserRoles = async (userId: string, roleIds: string[]): Promis
   });
 };
 
-export const removeUserRoles = async (userId: string, roleIds: string[]): Promise<AdminUser> => {
+export const removeUserRoles = async (
+  userId: string,
+  roleIds: string[],
+): Promise<AdminUser> => {
   const body = JSON.stringify({ role_ids: roleIds });
   return apiFetch<AdminUser>(`/api/v1/admin/users/${userId}/roles`, {
     method: "DELETE",
@@ -717,7 +810,10 @@ export const removeUserRoles = async (userId: string, roleIds: string[]): Promis
   });
 };
 
-export const setRolePermissions = async (roleId: string, permissionCodes: string[]): Promise<AdminRole> => {
+export const setRolePermissions = async (
+  roleId: string,
+  permissionCodes: string[],
+): Promise<AdminRole> => {
   const body = JSON.stringify({ permission_codes: permissionCodes });
   return apiFetch<AdminRole>(`/api/v1/admin/roles/${roleId}/permissions`, {
     method: "POST",
@@ -731,7 +827,10 @@ export const fetchAdminRoles = async (): Promise<AdminRole[]> => {
   return apiFetch<AdminRole[]>("/api/v1/admin/roles");
 };
 
-export const createAdminRole = async (payload: { name: string; description?: string | null }): Promise<AdminRole> => {
+export const createAdminRole = async (payload: {
+  name: string;
+  description?: string | null;
+}): Promise<AdminRole> => {
   const body = JSON.stringify(payload);
   return apiFetch<AdminRole>("/api/v1/admin/roles", {
     method: "POST",
@@ -796,15 +895,23 @@ export const updateWorker = async (
 };
 
 export const disableWorker = async (id: string): Promise<WorkerInfo> => {
-  return apiFetch<WorkerInfo>(`/api/v1/admin/workers/${id}/disable`, { method: "POST" });
+  return apiFetch<WorkerInfo>(`/api/v1/admin/workers/${id}/disable`, {
+    method: "POST",
+  });
 };
 
 export const enableWorker = async (id: string): Promise<WorkerInfo> => {
-  return apiFetch<WorkerInfo>(`/api/v1/admin/workers/${id}/enable`, { method: "POST" });
+  return apiFetch<WorkerInfo>(`/api/v1/admin/workers/${id}/enable`, {
+    method: "POST",
+  });
 };
 
-export const checkWorkerHealth = async (id: string): Promise<WorkerHealthStatus> => {
-  return apiFetch<WorkerHealthStatus>(`/api/v1/admin/workers/${id}/health`, { method: "POST" });
+export const checkWorkerHealth = async (
+  id: string,
+): Promise<WorkerHealthStatus> => {
+  return apiFetch<WorkerHealthStatus>(`/api/v1/admin/workers/${id}/health`, {
+    method: "POST",
+  });
 };
 
 export const requestWorkerToken = async (
@@ -812,17 +919,23 @@ export const requestWorkerToken = async (
   payload: { email: string; password: string },
 ): Promise<boolean> => {
   const body = JSON.stringify(payload);
-  const data = await apiFetch<{ success: boolean }>(`/api/v1/admin/workers/${workerId}/tokens`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body,
-  });
+  const data = await apiFetch<{ success: boolean }>(
+    `/api/v1/admin/workers/${workerId}/tokens`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    },
+  );
   return Boolean(data?.success);
 };
 
 /* VPS products */
-export const fetchAdminVpsProducts = async (params: { include_inactive?: boolean } = {}): Promise<VpsProduct[]> => {
-  const query = params.include_inactive === false ? "?include_inactive=false" : "";
+export const fetchAdminVpsProducts = async (
+  params: { include_inactive?: boolean } = {},
+): Promise<VpsProduct[]> => {
+  const query =
+    params.include_inactive === false ? "?include_inactive=false" : "";
   return apiFetch<VpsProduct[]>(`/api/v1/admin/vps-products${query}`);
 };
 
@@ -861,12 +974,21 @@ export const updateAdminVpsProduct = async (
   });
 };
 
-export const deactivateAdminVpsProduct = async (productId: string): Promise<VpsProduct> => {
-  return apiFetch<VpsProduct>(`/api/v1/admin/vps-products/${productId}`, { method: "DELETE" });
+export const deactivateAdminVpsProduct = async (
+  productId: string,
+): Promise<VpsProduct> => {
+  return apiFetch<VpsProduct>(`/api/v1/admin/vps-products/${productId}`, {
+    method: "DELETE",
+  });
 };
 
-export const deleteAdminVpsProduct = async (productId: string): Promise<void> => {
-  await apiFetch<void>(`/api/v1/admin/vps-products/${productId}?permanent=true`, { method: "DELETE" });
+export const deleteAdminVpsProduct = async (
+  productId: string,
+): Promise<void> => {
+  await apiFetch<void>(
+    `/api/v1/admin/vps-products/${productId}?permanent=true`,
+    { method: "DELETE" },
+  );
 };
 
 /* Announcements */
@@ -874,19 +996,27 @@ export const fetchAnnouncements = async (): Promise<AnnouncementSummary[]> => {
   return apiFetch<AnnouncementSummary[]>("/announcements");
 };
 
-export const fetchAnnouncementDetail = async (id: string): Promise<AnnouncementDetail> => {
+export const fetchAnnouncementDetail = async (
+  id: string,
+): Promise<AnnouncementDetail> => {
   return apiFetch<AnnouncementDetail>(`/announcements/${id}`);
 };
 
-export const fetchAnnouncementBySlug = async (slug: string): Promise<AnnouncementDetail> => {
+export const fetchAnnouncementBySlug = async (
+  slug: string,
+): Promise<AnnouncementDetail> => {
   return apiFetch<AnnouncementDetail>(`/announcements/slug/${slug}`);
 };
 
-export const fetchAdminAnnouncements = async (): Promise<AnnouncementSummary[]> => {
+export const fetchAdminAnnouncements = async (): Promise<
+  AnnouncementSummary[]
+> => {
   return apiFetch<AnnouncementSummary[]>("/api/v1/admin/announcements");
 };
 
-export const fetchAdminAnnouncement = async (id: string): Promise<AnnouncementDetail> => {
+export const fetchAdminAnnouncement = async (
+  id: string,
+): Promise<AnnouncementDetail> => {
   return apiFetch<AnnouncementDetail>(`/api/v1/admin/announcements/${id}`);
 };
 
@@ -926,11 +1056,15 @@ export const updateAnnouncement = async (
 };
 
 export const deleteAnnouncement = async (id: string): Promise<void> => {
-  await apiFetch<void>(`/api/v1/admin/announcements/${id}`, { method: "DELETE" });
+  await apiFetch<void>(`/api/v1/admin/announcements/${id}`, {
+    method: "DELETE",
+  });
 };
 
 /* Assets */
-export const uploadAdminAsset = async (file: File): Promise<AssetUploadResponse> => {
+export const uploadAdminAsset = async (
+  file: File,
+): Promise<AssetUploadResponse> => {
   const body = new FormData();
   body.append("file", file);
   return apiFetch<AssetUploadResponse>("/api/v1/admin/assets/upload", {
@@ -965,7 +1099,9 @@ export const fetchKyaroPrompt = async (): Promise<KyaroPrompt> => {
   return apiFetch<KyaroPrompt>("/api/v1/admin/kyaro/prompt");
 };
 
-export const updateKyaroPrompt = async (prompt: string): Promise<KyaroPrompt> => {
+export const updateKyaroPrompt = async (
+  prompt: string,
+): Promise<KyaroPrompt> => {
   const body = JSON.stringify({ prompt });
   return apiFetch<KyaroPrompt>("/api/v1/admin/kyaro/prompt", {
     method: "PATCH",
@@ -981,9 +1117,12 @@ export const registerWorkerTokenForCoin = async (payload: {
   confirm: boolean;
 }): Promise<{ ok: boolean; added?: number; balance?: number }> => {
   const body = JSON.stringify(payload);
-  return apiFetch<{ ok: boolean; added?: number; balance?: number }>("/ads/register-token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body,
-  });
+  return apiFetch<{ ok: boolean; added?: number; balance?: number }>(
+    "/ads/register-token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    },
+  );
 };
