@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.admin.deps import require_perm
@@ -88,7 +88,8 @@ async def delete_gift_code(
     gift_code_id: UUID,
     _: User = Depends(require_perm("gift_code:delete")),
     db: Session = Depends(get_db),
-) -> None:
+) -> Response:
     service = GiftCodeService(db)
     code = service.get_by_id(gift_code_id)
     service.delete_code(code)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
