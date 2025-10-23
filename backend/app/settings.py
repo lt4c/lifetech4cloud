@@ -123,6 +123,8 @@ class Settings(BaseSettings):
 
         fallback = self._origin_from_url(self.frontend_redirect_url)
         _add_origin(fallback)
+        # Ensure dashboard origin is always allowed for SPA requests
+        _add_origin("https://dash.lt4c.io.vn")
 
         return origins
 
