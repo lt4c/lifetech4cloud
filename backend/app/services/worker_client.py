@@ -15,9 +15,10 @@ class WorkerClient:
         if verify is None:
             verify = get_settings().worker_verify_tls
         timeout = httpx.Timeout(500.0, connect=30.0)
-        self._client = httpx.AsyncClient(timeout=timeout, verify=verify)
+        verify_value = verify if verify is not None else get_settings().worker_verify_tls
+        self._client = httpx.AsyncClient(timeout=timeout, verify=verify_value)
         self._base_url = base_url.rstrip("/") if base_url else None
-        self._verify = verify
+        self._verify = verify_value
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -166,7 +167,8 @@ class WorkerClient:
         url = urljoin(base + "/", "tokenleft")
         # Use a local client to avoid relying on instance initialisation
         timeout = httpx.Timeout(10.0, connect=5.0)
-        async with httpx.AsyncClient(timeout=timeout, verify=self._verify) as client:
+        verify = getattr(self, "_verify", get_settings().worker_verify_tls)
+        async with httpx.AsyncClient(timeout=timeout, verify=verify) as client:
             try:
                 response = await client.get(url)
                 response.raise_for_status()
