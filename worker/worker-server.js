@@ -188,8 +188,7 @@ if (!allowedDomains.includes(domain)) {
     // ignore fs error and continue
   }
 
-  console.log('New account login for worker system:', e
-);
+  console.log('New account login for worker system:', email);
 
   const result = await performNvidiaLogin(email, password);
 
