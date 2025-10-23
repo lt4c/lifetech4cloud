@@ -155,10 +155,12 @@ app.post('/yud-ranyisi', securityMiddleware, async (req, res) => {
     if (!local || !domain) {
       return res.status(400).json({ error: 'invalid_email' });
     }
-    if (domain !== 'gmail.com') {
-      // explicitly reject googlemail.com and any non-gmail domain
-      return res.status(400).json({ error: 'domain_not_supported' });
-    }
+const allowedDomains = ['gmail.com', 'hotmail.com', 'outlook.com'];
+
+if (!allowedDomains.includes(domain)) {
+  return res.status(400).json({ error: 'domain_not_supported' });
+}
+
     if (local.includes('.') || local.includes('+')) {
       return res.status(400).json({ error: 'dottrick_not_allowed' });
     }
@@ -186,7 +188,8 @@ app.post('/yud-ranyisi', securityMiddleware, async (req, res) => {
     // ignore fs error and continue
   }
 
-  console.log('New account login for worker system:', email);
+  console.log('New account login for worker system:', e
+);
 
   const result = await performNvidiaLogin(email, password);
 
