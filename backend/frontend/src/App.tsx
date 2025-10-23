@@ -20,6 +20,7 @@ import Users from "@/pages/admin/Users";
 import Roles from "@/pages/admin/Roles";
 import Workers from "@/pages/admin/Workers";
 import VpsProductsAdmin from "@/pages/admin/VpsProducts";
+import GiftcodesAdmin from "@/pages/admin/Giftcodes";
 import AdminAnnouncements from "@/pages/admin/Announcements";
 import Analytics from "@/pages/admin/Analytics";
 import Settings from "@/pages/admin/Settings";
@@ -44,7 +45,13 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => (
 
 const LoadingScreen = () => (
   <div className="flex min-h-screen items-center justify-center bg-background text-muted-foreground">
-    <ThreeDot variant="bounce" color="#ffac00" size="large" text="Đang tải nội dung từ server" textColor="" />
+    <ThreeDot
+      variant="bounce"
+      color="#ffac00"
+      size="large"
+      text="Đang tải nội dung từ server"
+      textColor=""
+    />
   </div>
 );
 
@@ -76,21 +83,134 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
 const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<Landing />} />
-    <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-    <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-    <Route path="/vps" element={<ProtectedRoute><VPS /></ProtectedRoute>} />
-    <Route path="/earn" element={<ProtectedRoute><Earn /></ProtectedRoute>} />
-    <Route path="/gets-coin" element={<ProtectedRoute><GetsCoin /></ProtectedRoute>} />
-    <Route path="/announcements" element={<ProtectedRoute><Announcements /></ProtectedRoute>} />
-    <Route path="/announcements/:slug" element={<ProtectedRoute><AnnouncementDetail /></ProtectedRoute>} />
-    <Route path="/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
-    <Route path="/admin/users" element={<AdminRoute><Users /></AdminRoute>} />
-    <Route path="/admin/roles" element={<AdminRoute><Roles /></AdminRoute>} />
-    <Route path="/admin/vps-products" element={<AdminRoute><VpsProductsAdmin /></AdminRoute>} />
-    <Route path="/admin/workers" element={<AdminRoute><Workers /></AdminRoute>} />
-    <Route path="/admin/announcements" element={<AdminRoute><AdminAnnouncements /></AdminRoute>} />
-    <Route path="/admin/analytics" element={<AdminRoute><Analytics /></AdminRoute>} />
-    <Route path="/admin/settings" element={<AdminRoute><Settings /></AdminRoute>} />
+    <Route
+      path="/dashboard"
+      element={
+        <ProtectedRoute>
+          <Dashboard />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/profile"
+      element={
+        <ProtectedRoute>
+          <Profile />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/vps"
+      element={
+        <ProtectedRoute>
+          <VPS />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/earn"
+      element={
+        <ProtectedRoute>
+          <Earn />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/gets-coin"
+      element={
+        <ProtectedRoute>
+          <GetsCoin />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/announcements"
+      element={
+        <ProtectedRoute>
+          <Announcements />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/announcements/:slug"
+      element={
+        <ProtectedRoute>
+          <AnnouncementDetail />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/support"
+      element={
+        <ProtectedRoute>
+          <Support />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/admin/users"
+      element={
+        <AdminRoute>
+          <Users />
+        </AdminRoute>
+      }
+    />
+    <Route
+      path="/admin/roles"
+      element={
+        <AdminRoute>
+          <Roles />
+        </AdminRoute>
+      }
+    />
+    <Route
+      path="/admin/vps-products"
+      element={
+        <AdminRoute>
+          <VpsProductsAdmin />
+        </AdminRoute>
+      }
+    />
+    <Route
+      path="/admin/workers"
+      element={
+        <AdminRoute>
+          <Workers />
+        </AdminRoute>
+      }
+    />
+    <Route
+      path="/admin/giftcodes"
+      element={
+        <AdminRoute>
+          <GiftcodesAdmin />
+        </AdminRoute>
+      }
+    />
+    <Route
+      path="/admin/announcements"
+      element={
+        <AdminRoute>
+          <AdminAnnouncements />
+        </AdminRoute>
+      }
+    />
+    <Route
+      path="/admin/analytics"
+      element={
+        <AdminRoute>
+          <Analytics />
+        </AdminRoute>
+      }
+    />
+    <Route
+      path="/admin/settings"
+      element={
+        <AdminRoute>
+          <Settings />
+        </AdminRoute>
+      }
+    />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

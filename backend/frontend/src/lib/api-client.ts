@@ -25,6 +25,7 @@ import type {
   PrepareAdResponse,
   WalletBalance,
   RewardMetricsSummary,
+  GiftCode,
 } from "./types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(
@@ -989,6 +990,83 @@ export const deleteAdminVpsProduct = async (
     `/api/v1/admin/vps-products/${productId}?permanent=true`,
     { method: "DELETE" },
   );
+};
+
+/* Gift Codes */
+export const fetchAdminGiftCodes = async (
+  params: { include_inactive?: boolean } = {},
+): Promise<GiftCode[]> => {
+  const query =
+    params.include_inactive === false ? "?include_inactive=false" : "";
+  return apiFetch<GiftCode[]>(`/api/v1/admin/giftcodes${query}`);
+};
+
+export const createAdminGiftCode = async (payload: {
+  title: string;
+  code: string;
+  reward_amount: number;
+  total_uses: number;
+  is_active: boolean;
+}): Promise<GiftCode> => {
+  const body = JSON.stringify(payload);
+  return apiFetch<GiftCode>("/api/v1/admin/giftcodes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+};
+
+export const updateAdminGiftCode = async (
+  giftCodeId: string,
+  payload: {
+    title?: string | null;
+    code?: string | null;
+    reward_amount?: number;
+    total_uses?: number;
+    is_active?: boolean;
+  },
+): Promise<GiftCode> => {
+  const body = JSON.stringify(payload);
+  return apiFetch<GiftCode>(`/api/v1/admin/giftcodes/${giftCodeId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+};
+
+export const deleteAdminGiftCode = async (
+  giftCodeId: string,
+): Promise<void> => {
+  await apiFetch<void>(`/api/v1/admin/giftcodes/${giftCodeId}`, {
+    method: "DELETE",
+  });
+};
+
+export const redeemGiftCode = async (payload: {
+  code: string;
+}): Promise<{
+  ok: boolean;
+  message: string;
+  added: number;
+  balance: number;
+  gift_title: string;
+  code: string;
+  remaining: number;
+}> => {
+  const body = JSON.stringify(payload);
+  return apiFetch<{
+    ok: boolean;
+    message: string;
+    added: number;
+    balance: number;
+    gift_title: string;
+    code: string;
+    remaining: number;
+  }>("/giftcodes/redeem", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
 };
 
 /* Announcements */

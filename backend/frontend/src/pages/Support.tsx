@@ -9,8 +9,15 @@ import {
   Link as LinkIcon,
   File as FileIcon,
   Search,
+  Gift,
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,19 +34,28 @@ import {
   fetchAdminSupportThreads,
   fetchSupportThreads,
   postSupportThreadMessage,
+  redeemGiftCode,
+  ApiError,
 } from "@/lib/api-client";
-import type { SupportAttachment, SupportThread, SupportThreadSummary } from "@/lib/types";
+import type {
+  SupportAttachment,
+  SupportThread,
+  SupportThreadSummary,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import remarkGfm from "remark-gfm";
 import ReactMarkdown from "react-markdown";
 import { ThreeDot } from "react-loading-indicators";
-/**
- * ======================
- *  Helpers & Constants
- * ======================
- */
 
-type AttachmentDraft = { label: string; url: string; kind: "link" | "image" | "file" };
+/* ======================
+ *  Helpers & Constants
+ * ====================== */
+
+type AttachmentDraft = {
+  label: string;
+  url: string;
+  kind: "link" | "image" | "file";
+};
 type TabKey = "reply" | "ai";
 const imageExtensions = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif"];
 
@@ -47,17 +63,24 @@ const defaultAttachment: AttachmentDraft = { label: "", url: "", kind: "link" };
 
 const cleanAttachments = (drafts: AttachmentDraft[]): SupportAttachment[] =>
   drafts
-    .map((d) => ({ url: d.url.trim(), label: d.label.trim() || null, kind: d.kind }))
+    .map((d) => ({
+      url: d.url.trim(),
+      label: d.label.trim() || null,
+      kind: d.kind,
+    }))
     .filter((a) => a.url.length > 0);
 
 const isImageLink = (a: SupportAttachment) =>
-  a.kind === "image" || imageExtensions.some((ext) => a.url.toLowerCase().endsWith(ext));
+  a.kind === "image" ||
+  imageExtensions.some((ext) => a.url.toLowerCase().endsWith(ext));
 
 const timeAgo = (value: string | null | undefined) => {
   if (!value) return "Không rõ";
   try {
     const fmt = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-    const minutes = Math.round((new Date(value).getTime() - Date.now()) / 60000);
+    const minutes = Math.round(
+      (new Date(value).getTime() - Date.now()) / 60000,
+    );
     if (Math.abs(minutes) < 60) return fmt.format(minutes, "minute");
     const hours = Math.round(minutes / 60);
     if (Math.abs(hours) < 24) return fmt.format(hours, "hour");
@@ -68,15 +91,27 @@ const timeAgo = (value: string | null | undefined) => {
   }
 };
 
-const getTimeValue = (raw: string | null | undefined) => (raw ? new Date(raw).getTime() : 0);
+const getTimeValue = (raw: string | null | undefined) =>
+  raw ? new Date(raw).getTime() : 0;
 const sortThreadsByRecency = (t: SupportThread[]) =>
-  [...t].sort((a, b) => getTimeValue(b.updated_at ?? b.created_at) - getTimeValue(a.updated_at ?? a.created_at));
+  [...t].sort(
+    (a, b) =>
+      getTimeValue(b.updated_at ?? b.created_at) -
+      getTimeValue(a.updated_at ?? a.created_at),
+  );
 const sortSummariesByRecency = (t: SupportThreadSummary[]) =>
-  [...t].sort((a, b) => getTimeValue(b.last_message_at ?? b.updated_at) - getTimeValue(a.last_message_at ?? a.updated_at));
+  [...t].sort(
+    (a, b) =>
+      getTimeValue(b.last_message_at ?? b.updated_at) -
+      getTimeValue(a.last_message_at ?? a.updated_at),
+  );
 const sortMessagesChronologically = (m: SupportThread["messages"]) =>
-  [...m].sort((a, b) => getTimeValue(a.created_at) - getTimeValue(b.created_at));
+  [...m].sort(
+    (a, b) => getTimeValue(a.created_at) - getTimeValue(b.created_at),
+  );
 
-const formatTicketId = (id: string) => `#${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+const formatTicketId = (id: string) =>
+  `#${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 const formatUserRef = (userId: string | null | undefined) =>
   userId ? userId.replace(/-/g, "").slice(0, 10).toUpperCase() : "Khách";
 
@@ -85,20 +120,24 @@ const ThreadBadge = ({ status }: { status: SupportThread["status"] }) => {
     status === "open"
       ? "bg-emerald-500/15 text-emerald-600"
       : status === "pending"
-      ? "bg-amber-500/15 text-amber-600"
-      : status === "resolved"
-      ? "bg-blue-500/15 text-blue-600"
-      : "bg-muted text-muted-foreground";
+        ? "bg-amber-500/15 text-amber-600"
+        : status === "resolved"
+          ? "bg-blue-500/15 text-blue-600"
+          : "bg-muted text-muted-foreground";
   const label =
-    status === "open" ? "Mở" : status === "pending" ? "Đang chờ" : status === "resolved" ? "Đã xử lý" : "Đã đóng";
+    status === "open"
+      ? "Mở"
+      : status === "pending"
+        ? "Đang chờ"
+        : status === "resolved"
+          ? "Đã xử lý"
+          : "Đã đóng";
   return <Badge className={cn("px-2 py-0.5", styles)}>{label}</Badge>;
 };
 
-/**
- * ======================
+/* ======================
  *  UI Sub-components
- * ======================
- */
+ * ====================== */
 
 const AttachmentEditor = ({
   value,
@@ -121,39 +160,67 @@ const AttachmentEditor = ({
   return (
     <div className="space-y-3">
       {value.map((a, i) => (
-        <div key={i} className="grid gap-2 md:grid-cols-[1fr,2fr,auto,auto] md:items-center">
-          <Input placeholder="Nhãn" value={a.label} onChange={(e) => update(i, { label: e.target.value })} />
-          <Input placeholder="https://..." value={a.url} onChange={(e) => update(i, { url: e.target.value })} />
+        <div
+          key={i}
+          className="grid gap-2 md:grid-cols-[1fr,2fr,auto,auto] md:items-center"
+        >
+          <Input
+            placeholder="Nh?n"
+            value={a.label}
+            onChange={(e) => update(i, { label: e.target.value })}
+          />
+          <Input
+            placeholder="https://..."
+            value={a.url}
+            onChange={(e) => update(i, { url: e.target.value })}
+          />
           <select
             value={a.kind}
-            onChange={(e) => update(i, { kind: e.target.value as AttachmentDraft["kind"] })}
+            onChange={(e) =>
+              update(i, { kind: e.target.value as AttachmentDraft["kind"] })
+            }
             className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm"
           >
-            <option value="link">Liên kết</option>
-            <option value="image">Ảnh</option>
-            <option value="file">Tệp</option>
+            <option value="link">Li?n k?t</option>
+            <option value="image">?nh</option>
+            <option value="file">T?p</option>
           </select>
           <Button variant="ghost" size="sm" onClick={() => remove(i)}>
-            Xóa
+            X?a
           </Button>
         </div>
       ))}
-      <Button variant="outline" size="sm" className="gap-2" onClick={() => onChange([...value, { ...defaultAttachment }])}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="gap-2"
+        onClick={() => onChange([...value, { ...defaultAttachment }])}
+      >
         <Plus className="w-4 h-4" />
-        Thêm đính kèm
+        Th?m ??nh k?m
       </Button>
     </div>
   );
 };
 
-const AttachmentPreview = ({ attachment }: { attachment: SupportAttachment }) => {
+const AttachmentPreview = ({
+  attachment,
+}: {
+  attachment: SupportAttachment;
+}) => {
   if (isImageLink(attachment)) {
     return (
       <div className="overflow-hidden rounded-lg border border-border/40 bg-muted/30">
         {/* eslint-disable-next-line jsx-a11y/alt-text, @next/next/no-img-element */}
-        <img src={attachment.url} alt={attachment.label ?? attachment.url} className="max-h-48 w-full object-contain" />
+        <img
+          src={attachment.url}
+          alt={attachment.label ?? attachment.url}
+          className="max-h-48 w-full object-contain"
+        />
         {attachment.label && (
-          <p className="border-t border-border/40 px-3 py-2 text-xs text-muted-foreground">{attachment.label}</p>
+          <p className="border-t border-border/40 px-3 py-2 text-xs text-muted-foreground">
+            {attachment.label}
+          </p>
         )}
       </div>
     );
@@ -186,43 +253,71 @@ const MessageBubble = ({
   const isAi = message.sender === "ai";
   const viewerIsAdmin = viewer === "admin";
 
-  // Sender label
-  const userLabel = viewerIsAdmin ? `Người dùng ${formatUserRef(thread.user_id ?? null)}` : "Bạn";
-  const adminLabel = viewerIsAdmin ? message.role ?? "Nhân viên hỗ trợ" : "Đội hỗ trợ";
+  const userLabel = viewerIsAdmin
+    ? `Người dùng ${formatUserRef(thread.user_id ?? null)}`
+    : "Bạn";
+  const adminLabel = viewerIsAdmin
+    ? (message.role ?? "Nhân viên hỗ trợ")
+    : "Đội hỗ trợ";
   const senderLabel = isAi ? "Trợ lý Kyaro" : isUser ? userLabel : adminLabel;
 
-  // Side
-  const alignRight = isUser && !viewerIsAdmin ? true : viewerIsAdmin ? isUser : false;
+  const alignRight =
+    isUser && !viewerIsAdmin ? true : viewerIsAdmin ? isUser : false;
 
   return (
-    <div className={cn("flex w-full gap-3", alignRight ? "justify-end" : "justify-start")}>
+    <div
+      className={cn(
+        "flex w-full gap-3",
+        alignRight ? "justify-end" : "justify-start",
+      )}
+    >
       {!alignRight && (
         <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-foreground shadow-sm">
-          {isAi ? <Bot className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
+          {isAi ? (
+            <Bot className="h-4 w-4" />
+          ) : (
+            <MessageSquare className="h-4 w-4" />
+          )}
         </div>
       )}
 
-      <div className={cn("flex max-w-[78%] flex-col", alignRight ? "items-end" : "items-start")}>
-        <div className={cn("rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm", 
-          alignRight
-            ? "bg-primary text-primary-foreground"
-            : isAi
-              ? "bg-secondary/30 text-foreground"
-              : "bg-muted text-foreground"
-        )}>
-          <p className={cn("mb-1 text-[0.65rem] font-semibold uppercase tracking-wide opacity-80",
-            alignRight ? "text-right" : "text-left"
-          )}>
+      <div
+        className={cn(
+          "flex max-w-[78%] flex-col",
+          alignRight ? "items-end" : "items-start",
+        )}
+      >
+        <div
+          className={cn(
+            "rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm",
+            alignRight
+              ? "bg-primary text-primary-foreground"
+              : isAi
+                ? "bg-secondary/30 text-foreground"
+                : "bg-muted text-foreground",
+          )}
+        >
+          <p
+            className={cn(
+              "mb-1 text-[0.65rem] font-semibold uppercase tracking-wide opacity-80",
+              alignRight ? "text-right" : "text-left",
+            )}
+          >
             {senderLabel}
           </p>
 
           {message.content ? (
             isAi ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm dark:prose-invert max-w-none break-words">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                className="prose prose-sm dark:prose-invert max-w-none break-words [&_pre]:overflow-x-auto"
+              >
                 {message.content}
               </ReactMarkdown>
             ) : (
-              <p className="whitespace-pre-wrap break-words">{message.content}</p>
+              <p className="whitespace-pre-wrap break-words">
+                {message.content}
+              </p>
             )
           ) : (
             <p className="italic opacity-75">Chưa có nội dung.</p>
@@ -230,7 +325,12 @@ const MessageBubble = ({
         </div>
 
         {message.attachments?.length ? (
-          <div className={cn("mt-2 flex w-full flex-col gap-2", alignRight ? "items-end" : "items-start")}>
+          <div
+            className={cn(
+              "mt-2 flex w-full flex-col gap-2",
+              alignRight ? "items-end" : "items-start",
+            )}
+          >
             {message.attachments.map((att, i) => (
               <AttachmentPreview key={i} attachment={att} />
             ))}
@@ -252,11 +352,9 @@ const MessageBubble = ({
   );
 };
 
-/**
- * ======================
+/* ======================
  *        Page
- * ======================
- */
+ * ====================== */
 
 const Support = () => {
   const { hasAdminAccess } = useAuth();
@@ -265,19 +363,38 @@ const Support = () => {
   // UI state
   const [search, setSearch] = useState("");
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<SupportThread["status"] | "all">("open");
+  const [statusFilter, setStatusFilter] = useState<
+    SupportThread["status"] | "all"
+  >("open");
   const [composerTab, setComposerTab] = useState<TabKey>("reply");
 
+  const [giftCodeInput, setGiftCodeInput] = useState("");
+  const [giftMessage, setGiftMessage] = useState<string | null>(null);
+  const [giftResult, setGiftResult] = useState<{
+    title: string;
+    added: number;
+    balance: number;
+    remaining: number;
+  } | null>(null);
   // Compose state
   const [replyText, setReplyText] = useState("");
-  const [replyAttachments, setReplyAttachments] = useState<AttachmentDraft[]>([]);
+  const [replyAttachments, setReplyAttachments] = useState<AttachmentDraft[]>(
+    [],
+  );
   const [aiText, setAiText] = useState("");
   const [aiAttachments, setAiAttachments] = useState<AttachmentDraft[]>([]);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   // Queries
-  const userThreadsQueryKey: readonly [string, string] = ["support-threads", "user"];
-  const adminListQueryKey: readonly [string, string, string] = ["support-threads", "admin", statusFilter ?? "all"];
+  const userThreadsQueryKey: readonly [string, string] = [
+    "support-threads",
+    "user",
+  ];
+  const adminListQueryKey: readonly [string, string, string] = [
+    "support-threads",
+    "admin",
+    statusFilter ?? "all",
+  ];
 
   const userThreadsQuery = useQuery({
     queryKey: userThreadsQueryKey,
@@ -288,7 +405,10 @@ const Support = () => {
 
   const adminSummariesQuery = useQuery({
     queryKey: adminListQueryKey,
-    queryFn: () => fetchAdminSupportThreads(statusFilter === "all" ? undefined : statusFilter),
+    queryFn: () =>
+      fetchAdminSupportThreads(
+        statusFilter === "all" ? undefined : statusFilter,
+      ),
     enabled: hasAdminAccess,
     staleTime: 10_000,
   });
@@ -302,41 +422,56 @@ const Support = () => {
 
   // Derived data
   const adminThreadSummaries = useMemo(
-    () => (hasAdminAccess ? sortSummariesByRecency(adminSummariesQuery.data ?? []) : []),
+    () =>
+      hasAdminAccess
+        ? sortSummariesByRecency(adminSummariesQuery.data ?? [])
+        : [],
     [hasAdminAccess, adminSummariesQuery.data],
   );
 
   const userThreads = userThreadsQuery.data ?? [];
-  const sortedUserThreads = useMemo(() => sortThreadsByRecency(userThreads), [userThreads]);
+  const sortedUserThreads = useMemo(
+    () => sortThreadsByRecency(userThreads),
+    [userThreads],
+  );
 
   // Which list to show (left column)
-  const ticketItems: Array<SupportThread | SupportThreadSummary> = useMemo(() => {
-    const base = hasAdminAccess ? adminThreadSummaries : sortedUserThreads;
-    if (!search.trim()) return base;
-    const q = search.trim().toLowerCase();
-    return base.filter((t: any) => {
-      const id = (t.id ?? "").toString().toLowerCase();
-      const source = (t.source ?? "").toString().toLowerCase();
-      const name = (t.title ?? t.subject ?? "").toString().toLowerCase();
-      return id.includes(q) || source.includes(q) || name.includes(q);
-    });
-  }, [hasAdminAccess, adminThreadSummaries, sortedUserThreads, search]);
+  const ticketItems: Array<SupportThread | SupportThreadSummary> =
+    useMemo(() => {
+      const base = hasAdminAccess ? adminThreadSummaries : sortedUserThreads;
+      if (!search.trim()) return base;
+      const q = search.trim().toLowerCase();
+      return base.filter((t: any) => {
+        const id = (t.id ?? "").toString().toLowerCase();
+        const source = (t.source ?? "").toString().toLowerCase();
+        const name = (t.title ?? t.subject ?? "").toString().toLowerCase();
+        return id.includes(q) || source.includes(q) || name.includes(q);
+      });
+    }, [hasAdminAccess, adminThreadSummaries, sortedUserThreads, search]);
 
   // Selected thread entity
   const selectedThread: SupportThread | undefined = useMemo(() => {
     if (!selectedThreadId) return undefined;
     if (hasAdminAccess) {
-      return adminThreadDetailQuery.data && adminThreadDetailQuery.data.id === selectedThreadId
+      return adminThreadDetailQuery.data &&
+        adminThreadDetailQuery.data.id === selectedThreadId
         ? adminThreadDetailQuery.data
         : undefined;
     }
     return sortedUserThreads.find((t) => t.id === selectedThreadId);
-  }, [selectedThreadId, hasAdminAccess, adminThreadDetailQuery.data, sortedUserThreads]);
+  }, [
+    selectedThreadId,
+    hasAdminAccess,
+    adminThreadDetailQuery.data,
+    sortedUserThreads,
+  ]);
 
   // Ensure selection
   useEffect(() => {
     if (hasAdminAccess) {
-      const hasSel = selectedThreadId ? adminThreadSummaries.some((s) => s.id === selectedThreadId) : false;
+      const hasSel = selectedThreadId
+        ? adminThreadSummaries.some((s) => s.id === selectedThreadId)
+        : false;
       if (selectedThreadId && !hasSel) {
         setSelectedThreadId(adminThreadSummaries[0]?.id ?? null);
       } else if (!selectedThreadId && adminThreadSummaries.length > 0) {
@@ -347,48 +482,69 @@ const Support = () => {
     if (!selectedThreadId && sortedUserThreads.length > 0) {
       setSelectedThreadId(sortedUserThreads[0].id);
     }
-  }, [hasAdminAccess, selectedThreadId, adminThreadSummaries, sortedUserThreads]);
+  }, [
+    hasAdminAccess,
+    selectedThreadId,
+    adminThreadSummaries,
+    sortedUserThreads,
+  ]);
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom on new messages (sau khi chọn thread hoặc có message mới)
   useEffect(() => {
     if (selectedThread) {
-      setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 0);
+      setTimeout(
+        () => endRef.current?.scrollIntoView({ behavior: "smooth" }),
+        0,
+      );
     }
   }, [selectedThread?.id, selectedThread?.messages?.length]);
 
-  /**
-   * Cache update helpers
-   */
-  const updateThreadInCache = (threadId: string, updater: (thread: SupportThread) => SupportThread) => {
+  /* Cache update helpers */
+  const updateThreadInCache = (
+    threadId: string,
+    updater: (thread: SupportThread) => SupportThread,
+  ) => {
     if (hasAdminAccess) {
-      queryClient.setQueryData(["support-thread", "admin", threadId], (prev: SupportThread | undefined) => {
-        if (!prev) return prev;
-        const next = updater(prev);
-        return { ...next, messages: sortMessagesChronologically(next.messages ?? []) };
-        });
+      queryClient.setQueryData(
+        ["support-thread", "admin", threadId],
+        (prev: SupportThread | undefined) => {
+          if (!prev) return prev;
+          const next = updater(prev);
+          return {
+            ...next,
+            messages: sortMessagesChronologically(next.messages ?? []),
+          };
+        },
+      );
       queryClient.setQueryData(adminListQueryKey, (prev: any) => {
         if (!prev) return prev;
         const updated = prev.map((s: SupportThreadSummary) =>
-          s.id === threadId ? { ...s, updated_at: new Date().toISOString() } : s,
+          s.id === threadId
+            ? { ...s, updated_at: new Date().toISOString() }
+            : s,
         );
         return sortSummariesByRecency(updated);
       });
     } else {
-      queryClient.setQueryData(userThreadsQueryKey, (prev: SupportThread[] | undefined) => {
-        if (!prev) return prev;
-        const updated = prev.map((t) => {
-          if (t.id !== threadId) return t;
-          const next = updater(t);
-          return { ...next, messages: sortMessagesChronologically(next.messages ?? []) };
-        });
-        return sortThreadsByRecency(updated);
-      });
+      queryClient.setQueryData(
+        userThreadsQueryKey,
+        (prev: SupportThread[] | undefined) => {
+          if (!prev) return prev;
+          const updated = prev.map((t) => {
+            if (t.id !== threadId) return t;
+            const next = updater(t);
+            return {
+              ...next,
+              messages: sortMessagesChronologically(next.messages ?? []),
+            };
+          });
+          return sortThreadsByRecency(updated);
+        },
+      );
     }
   };
 
-  /**
-   * SSE live updates
-   */
+  /* SSE live updates */
   const sseRef = useRef<EventSource | null>(null);
   useEffect(() => {
     if (!selectedThreadId) return;
@@ -424,16 +580,30 @@ const Support = () => {
             meta: data.meta ?? {},
             created_at: data.created_at ?? null,
           };
-          const messages = exists ? thr.messages.map((m) => (m.id === data.id ? newMsg : m)) : [...thr.messages, newMsg];
-          return { ...thr, messages, updated_at: newMsg.created_at ?? thr.updated_at };
+          const messages = exists
+            ? thr.messages.map((m) => (m.id === data.id ? newMsg : m))
+            : [...thr.messages, newMsg];
+          return {
+            ...thr,
+            messages,
+            updated_at: newMsg.created_at ?? thr.updated_at,
+          };
         });
       } catch {}
     };
     const onStatus = (e: MessageEvent) => {
       try {
-        const data = JSON.parse(e.data) as { thread_id: string; status: SupportThread["status"]; updated_at?: string };
+        const data = JSON.parse(e.data) as {
+          thread_id: string;
+          status: SupportThread["status"];
+          updated_at?: string;
+        };
         if (!data.thread_id || !data.status) return;
-        updateThreadInCache(data.thread_id, (t) => ({ ...t, status: data.status, updated_at: data.updated_at ?? t.updated_at }));
+        updateThreadInCache(data.thread_id, (t) => ({
+          ...t,
+          status: data.status,
+          updated_at: data.updated_at ?? t.updated_at,
+        }));
       } catch {}
     };
 
@@ -451,18 +621,68 @@ const Support = () => {
     };
   }, [hasAdminAccess, selectedThreadId]);
 
-  /**
-   * Mutations
-   */
+  /* Mutations */
+  const redeemMutation = useMutation({
+    mutationFn: redeemGiftCode,
+    onSuccess: (data) => {
+      setGiftResult({
+        title: data.gift_title,
+        added: data.added,
+        balance: data.balance,
+        remaining: data.remaining,
+      });
+      setGiftMessage(
+        `Đổi mã thành công ${data.gift_title}. Bạn nhận +${data.added.toLocaleString()} xu, số dư hiện tại: ${data.balance.toLocaleString()} xu.`,
+      );
+      setGiftCodeInput("");
+      queryClient.invalidateQueries({ queryKey: ["wallet-balance"] });
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+    onError: (error) => {
+      let detail = "Không thể đổi mã. Vui lòng kiểm tra và thử lại.";
+      if (error instanceof ApiError) {
+        const raw = (error.data as { detail?: string } | undefined)?.detail;
+        if (typeof raw === "string") {
+          detail = raw;
+        }
+      } else if (error instanceof Error) {
+        detail = error.message;
+      }
+      setGiftResult(null);
+      setGiftMessage(detail);
+      toast(detail);
+    },
+  });
+
+  const handleRedeem = () => {
+    const trimmed = giftCodeInput.trim().toUpperCase();
+    if (!trimmed) {
+      setGiftResult(null);
+      setGiftMessage("Vui lòng nhập mã quà hợp lệ.");
+      return;
+    }
+    setGiftMessage(null);
+    redeemMutation.mutate({ code: trimmed });
+  };
+
   const upsertUserThread = useCallback(
     (thread: SupportThread) => {
-      queryClient.setQueryData(userThreadsQueryKey, (prev: SupportThread[] | undefined) => {
-        const norm = { ...thread, messages: sortMessagesChronologically(thread.messages ?? []) };
-        if (!prev) return [norm];
-        const idx = prev.findIndex((t) => t.id === thread.id);
-        const next = idx >= 0 ? [...prev.slice(0, idx), norm, ...prev.slice(idx + 1)] : [...prev, norm];
-        return sortThreadsByRecency(next);
-      });
+      queryClient.setQueryData(
+        userThreadsQueryKey,
+        (prev: SupportThread[] | undefined) => {
+          const norm = {
+            ...thread,
+            messages: sortMessagesChronologically(thread.messages ?? []),
+          };
+          if (!prev) return [norm];
+          const idx = prev.findIndex((t) => t.id === thread.id);
+          const next =
+            idx >= 0
+              ? [...prev.slice(0, idx), norm, ...prev.slice(idx + 1)]
+              : [...prev, norm];
+          return sortThreadsByRecency(next);
+        },
+      );
     },
     [queryClient],
   );
@@ -490,7 +710,8 @@ const Support = () => {
       setAiText("");
       setAiAttachments([]);
     },
-    onError: (err: unknown) => toast(err instanceof Error ? err.message : "Không gửi được tới trợ lý."),
+    onError: (err: unknown) =>
+      toast(err instanceof Error ? err.message : "Không gửi được tới trợ lý."),
   });
 
   const humanMutation = useMutation({
@@ -502,14 +723,18 @@ const Support = () => {
       threadId: string | null;
       message: string;
       attachments: SupportAttachment[];
-    }) => (threadId ? postSupportThreadMessage(threadId, message, attachments) : createSupportThread(message, attachments)),
+    }) =>
+      threadId
+        ? postSupportThreadMessage(threadId, message, attachments)
+        : createSupportThread(message, attachments),
     onSuccess: (thread) => {
       if (!hasAdminAccess) upsertUserThread(thread);
       setSelectedThreadId(thread.id);
       setReplyText("");
       setReplyAttachments([]);
     },
-    onError: (err: unknown) => toast(err instanceof Error ? err.message : "Không gửi được tin nhắn."),
+    onError: (err: unknown) =>
+      toast(err instanceof Error ? err.message : "Không gửi được tin nhắn."),
   });
 
   const adminReplyMutation = useMutation({
@@ -524,12 +749,11 @@ const Support = () => {
       status: SupportThread["status"] | null;
       attachments: SupportAttachment[];
     }) => adminReplySupportThread(id, message, status, attachments),
-    onError: (err: unknown) => toast(err instanceof Error ? err.message : "Phản hồi thất bại."),
+    onError: (err: unknown) =>
+      toast(err instanceof Error ? err.message : "Phản hồi thất bại."),
   });
 
-  /**
-   * Handlers
-   */
+  /* Handlers */
   const sendReply = async () => {
     const trimmed = replyText.trim();
     if (!trimmed) return toast("Nội dung không được để trống.");
@@ -563,214 +787,357 @@ const Support = () => {
 
   const viewer: "admin" | "user" = hasAdminAccess ? "admin" : "user";
   const orderedMessages = useMemo(
-    () => (selectedThread ? sortMessagesChronologically(selectedThread.messages ?? []) : []),
+    () =>
+      selectedThread
+        ? sortMessagesChronologically(selectedThread.messages ?? [])
+        : [],
     [selectedThread],
   );
 
-  /**
-   * ==============
+  /* ==============
    *    Render
-   * ==============
-   */
+   * ============== */
   return (
-    <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
-      {/* LEFT: Ticket list */}
+    <div className="space-y-6">
       <Card className="glass-card">
-        <CardHeader className="space-y-3">
-          <CardTitle>Danh sách ticket</CardTitle>
-          <CardDescription>Chọn ticket để đọc & trả lời. Tìm kiếm theo mã, nguồn hoặc tiêu đề.</CardDescription>
-          <div className="flex items-center gap-2">
-            <div className="relative w-full">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                className="pl-8"
-                placeholder="Tìm ticket..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            {hasAdminAccess && (
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm"
-              >
-                <option value="all">Tất cả</option>
-                <option value="open">Mở</option>
-                <option value="pending">Đang chờ</option>
-                <option value="resolved">Đã xử lý</option>
-                <option value="closed">Đã đóng</option>
-              </select>
-            )}
-          </div>
+        <CardHeader>
+          <CardTitle>Giftcode</CardTitle>
+          <CardDescription>
+            Nh?p m? qu? ?? nh?n xu th??ng m?t l?n duy nh?t cho m?i t?i kho?n.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="p-0">
-          <ScrollArea className="h-[70vh] rounded-b-md border-t border-border/20">
-            <div className="space-y-2 p-2">
-              {(!hasAdminAccess ? userThreadsQuery.isLoading : adminSummariesQuery.isLoading) && (
-                <p className="px-2 py-2 text-sm text-muted-foreground">Đang tải danh sách...</p>
+        <CardContent className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Input
+              placeholder="Nh?p m? qu?..."
+              value={giftCodeInput}
+              onChange={(event) => setGiftCodeInput(event.target.value)}
+              className="sm:flex-1"
+            />
+            <Button
+              onClick={handleRedeem}
+              disabled={redeemMutation.isLoading}
+              className="gap-2"
+            >
+              {redeemMutation.isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Gift className="h-4 w-4" />
               )}
-              {ticketItems.length === 0 && (
-                <p className="px-2 py-2 text-sm text-muted-foreground">Không có ticket phù hợp.</p>
+              Đổi mã
+            </Button>
+          </div>
+          {giftResult && (
+            <p className="text-xs text-muted-foreground">
+              Mã {giftResult.title} còn lại{" "}
+              {giftResult.remaining.toLocaleString()} lượt.
+            </p>
+          )}
+          {giftMessage && (
+            <p
+              className={cn(
+                "text-sm",
+                giftResult ? "text-emerald-600" : "text-destructive",
               )}
-              {ticketItems.map((t: any) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setSelectedThreadId(t.id)}
-                  className={cn(
-                    "w-full rounded-lg border border-transparent px-3 py-2 text-left transition hover:border-border/60",
-                    t.id === selectedThreadId ? "border-primary bg-primary/5" : "bg-card",
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">
-                        {t.source === "ai" ? "Trợ lý AI" : `Ticket ${formatTicketId(t.id)}`}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {hasAdminAccess ? `Người dùng ${formatUserRef(t.user_id)}` : t.source === "ai" ? "AI" : "Hỗ trợ"} •{" "}
-                        {timeAgo(t.last_message_at ?? t.updated_at ?? t.created_at)}
-                      </p>
-                    </div>
-                    <ThreadBadge status={t.status} />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </ScrollArea>
+            >
+              {giftMessage}
+            </p>
+          )}
         </CardContent>
       </Card>
 
-      {/* RIGHT: Chat panel */}
-      <div className="space-y-6">
-        <Card className="glass-card min-h-[60vh]">
-          <CardHeader>
-            <CardTitle>
-              {selectedThread
-                ? selectedThread.source === "ai"
-                  ? "Trợ lý Kyaro"
-                  : `Ticket ${formatTicketId(selectedThread.id)}`
-                : "Chưa chọn ticket"}
-            </CardTitle>
+      <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
+        {/* LEFT: Ticket list */}
+        <Card className="glass-card">
+          <CardHeader className="space-y-3">
+            <CardTitle>Danh sách ticket</CardTitle>
             <CardDescription>
-              {selectedThread
-                ? selectedThread.source === "ai"
-                  ? "Hỏi đáp nhanh với trợ lý. Tin nhắn hiển thị kiểu trái/phải cho dễ theo dõi."
-                  : "Trao đổi với đội hỗ trợ. Tin nhắn hiển thị kiểu trái/phải như ứng dụng chat."
-                : "Hãy chọn một ticket ở khung bên trái để bắt đầu."}
+              Chọn ticket để đọc & trả lời. Tìm kiếm theo mã, nguồn hoặc tiêu
+              đề.
             </CardDescription>
+            <div className="flex items-center gap-2">
+              <div className="relative w-full">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  className="pl-8"
+                  placeholder="Tìm ticket..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              {hasAdminAccess && (
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+                >
+                  <option value="all">Tất cả</option>
+                  <option value="open">Mở</option>
+                  <option value="pending">Đang chờ</option>
+                  <option value="resolved">Đã xử lý</option>
+                  <option value="closed">Đã đóng</option>
+                </select>
+              )}
+            </div>
           </CardHeader>
-          <CardContent>
-            <ScrollArea className="max-h-[55vh] rounded-md border border-border/20">
-              <div className="space-y-5 p-4">
-                {!selectedThread && <p className="text-sm text-muted-foreground">Chưa có cuộc trò chuyện nào được chọn.</p>}
-                {selectedThread &&
-                  orderedMessages.map((m) => (
-                    <MessageBubble key={m.id} thread={selectedThread} message={m} viewer={viewer} />
-                  ))}
-                <div ref={endRef} />
+          <CardContent className="p-0">
+            {/* FIX: dùng h-[70vh], không dùng max-h */}
+            <ScrollArea className="h-[70vh] rounded-b-md border-t border-border/20">
+              <div className="space-y-2 p-2 pr-4">
+                {(!hasAdminAccess
+                  ? userThreadsQuery.isLoading
+                  : adminSummariesQuery.isLoading) && (
+                  <p className="px-2 py-2 text-sm text-muted-foreground">
+                    Đang tải danh sách...
+                  </p>
+                )}
+                {ticketItems.length === 0 && (
+                  <p className="px-2 py-2 text-sm text-muted-foreground">
+                    Không có ticket phù hợp.
+                  </p>
+                )}
+                {ticketItems.map((t: any) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSelectedThreadId(t.id)}
+                    className={cn(
+                      "w-full rounded-lg border border-transparent px-3 py-2 text-left transition hover:border-border/60",
+                      t.id === selectedThreadId
+                        ? "border-primary bg-primary/5"
+                        : "bg-card",
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">
+                          {t.source === "ai"
+                            ? "Trợ lý AI"
+                            : `Ticket ${formatTicketId(t.id)}`}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {hasAdminAccess
+                            ? `Người dùng ${formatUserRef(t.user_id)}`
+                            : t.source === "ai"
+                              ? "AI"
+                              : "Hỗ trợ"}{" "}
+                          •{" "}
+                          {timeAgo(
+                            t.last_message_at ?? t.updated_at ?? t.created_at,
+                          )}
+                        </p>
+                      </div>
+                      <ThreadBadge status={t.status} />
+                    </div>
+                  </button>
+                ))}
               </div>
             </ScrollArea>
           </CardContent>
         </Card>
 
-        {/* Composer: Admin có thể chọn tab: trả lời user / hỏi Kyaro.
-            User: chỉ hiển thị theo nguồn của ticket (human => reply, ai => hỏi AI) */}
-        <Card className="glass-card">
-          <CardHeader className="pb-2">
-            <CardTitle>Soạn tin nhắn</CardTitle>
-            <CardDescription>
-              {hasAdminAccess
-                ? "Chọn tab phù hợp: trả lời khách hoặc hỏi Trợ lý Kyaro (nội bộ)."
-                : "Gửi tin nhắn, đính kèm ảnh/liên kết. Tin nhắn sẽ tới đúng kênh bạn đã chọn."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {hasAdminAccess ? (
-              <Tabs value={composerTab} onValueChange={(v) => setComposerTab(v as TabKey)} className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="reply">Trả lời khách</TabsTrigger>
-                  <TabsTrigger value="ai">Hỏi Trợ lý AI</TabsTrigger>
-                </TabsList>
+        {/* RIGHT: Chat panel */}
+        <div className="space-y-6">
+          <Card className="glass-card min-h-[60vh]">
+            <CardHeader>
+              <CardTitle>
+                {selectedThread
+                  ? selectedThread.source === "ai"
+                    ? "Trợ lý Kyaro"
+                    : `Ticket ${formatTicketId(selectedThread.id)}`
+                  : "Chưa chọn ticket"}
+              </CardTitle>
+              <CardDescription>
+                {selectedThread
+                  ? selectedThread.source === "ai"
+                    ? "Hỏi đáp nhanh với trợ lý."
+                    : "Trao đổi với đội hỗ trợ."
+                  : "Hãy chọn một ticket ở khung bên trái để bắt đầu."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* FIX: dùng h-[55vh] + padding phải để tránh che scrollbar */}
+              <ScrollArea className="h-[55vh] rounded-md border border-border/20">
+                <div className="space-y-5 p-4 pr-6">
+                  {!selectedThread && (
+                    <p className="text-sm text-muted-foreground">
+                      Chưa có cuộc trò chuyện nào được chọn.
+                    </p>
+                  )}
+                  {selectedThread &&
+                    orderedMessages.map((m) => (
+                      <MessageBubble
+                        key={m.id}
+                        thread={selectedThread}
+                        message={m}
+                        viewer={viewer}
+                      />
+                    ))}
+                  <div ref={endRef} />
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
 
-                <TabsContent value="reply" className="space-y-4">
-                  <Textarea
-                    placeholder="Nhập phản hồi cho người dùng..."
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    className="min-h-[120px]"
-                    disabled={!selectedThread}
-                  />
-                  <AttachmentEditor value={replyAttachments} onChange={setReplyAttachments} />
-                  <div className="flex justify-end">
-                    <Button
-                      onClick={sendReply}
-                      disabled={!selectedThread || adminReplyMutation.isLoading}
-                      className="gap-2"
-                    >
-                      {adminReplyMutation.isLoading ? <ThreeDot variant="bounce" color="#ffac00" size="large" text="Đang tải nội dung từ server" textColor="" /> : <Send className="h-4 w-4" />}
-                      Gửi phản hồi
-                    </Button>
-                  </div>
-                </TabsContent>
+          {/* Composer */}
+          <Card className="glass-card">
+            <CardHeader className="pb-2">
+              <CardTitle>Soạn tin nhắn</CardTitle>
+              <CardDescription>
+                {hasAdminAccess
+                  ? "Chọn tab phù hợp: trả lời khách hoặc hỏi Trợ lý Kyaro (nội bộ)."
+                  : "Gửi tin nhắn, đính kèm ảnh/liên kết. Tin nhắn sẽ tới đúng kênh bạn đã chọn."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {hasAdminAccess ? (
+                <Tabs
+                  value={composerTab}
+                  onValueChange={(v) => setComposerTab(v as TabKey)}
+                  className="w-full"
+                >
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="reply">Trả lời khách</TabsTrigger>
+                    <TabsTrigger value="ai">Hỏi Trợ lý AI</TabsTrigger>
+                  </TabsList>
 
-                <TabsContent value="ai" className="space-y-4">
-                  <Textarea
-                    placeholder="Đặt câu hỏi cho Trợ lý Kyaro (riêng tư)..."
-                    value={aiText}
-                    onChange={(e) => setAiText(e.target.value)}
-                    className="min-h-[120px]"
-                  />
-                  <AttachmentEditor value={aiAttachments} onChange={setAiAttachments} />
-                  <div className="flex justify-end">
-                    <Button onClick={askKyaro} disabled={askMutation.isLoading} className="gap-2">
-                      {askMutation.isLoading ? <ThreeDot variant="bounce" color="#ffac00" size="large" text="Đang tải nội dung từ server" textColor="" /> : <Bot className="h-4 w-4" />}
-                      Hỏi Kyaro
-                    </Button>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            ) : (
-              <>
-                {/* USER view: quyết định theo nguồn thread */}
-                {selectedThread?.source === "ai" ? (
-                  <>
+                  <TabsContent value="reply" className="space-y-4">
                     <Textarea
-                      placeholder="Hỏi trợ lý..."
+                      placeholder="Nhập phản hồi cho người dùng..."
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      className="min-h-[120px]"
+                      disabled={!selectedThread}
+                    />
+                    <AttachmentEditor
+                      value={replyAttachments}
+                      onChange={setReplyAttachments}
+                    />
+                    <div className="flex justify-end">
+                      <Button
+                        onClick={sendReply}
+                        disabled={
+                          !selectedThread || adminReplyMutation.isLoading
+                        }
+                        className="gap-2"
+                      >
+                        {adminReplyMutation.isLoading ? (
+                          <ThreeDot
+                            variant="bounce"
+                            color="#ffac00"
+                            size="large"
+                            text="Đang tải nội dung từ server"
+                            textColor=""
+                          />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                        Gửi phản hồi
+                      </Button>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="ai" className="space-y-4">
+                    <Textarea
+                      placeholder="Đặt câu hỏi cho Trợ lý Kyaro (riêng tư)..."
                       value={aiText}
                       onChange={(e) => setAiText(e.target.value)}
                       className="min-h-[120px]"
                     />
-                    <AttachmentEditor value={aiAttachments} onChange={setAiAttachments} />
-                    <div className="flex justify-end">
-                      <Button onClick={askKyaro} disabled={askMutation.isLoading} className="gap-2">
-                        {askMutation.isLoading ? <ThreeDot variant="bounce" color="#ffac00" size="large" text="Đang tải nội dung từ server" textColor="" /> : <Bot className="h-4 w-4" />}
-                        Gửi
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Textarea
-                      placeholder="Nhập tin nhắn..."
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      className="min-h-[120px]"
+                    <AttachmentEditor
+                      value={aiAttachments}
+                      onChange={setAiAttachments}
                     />
-                    <AttachmentEditor value={replyAttachments} onChange={setReplyAttachments} />
                     <div className="flex justify-end">
-                      <Button onClick={sendReply} disabled={humanMutation.isLoading} className="gap-2">
-                        {humanMutation.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        Gửi
+                      <Button
+                        onClick={askKyaro}
+                        disabled={askMutation.isLoading}
+                        className="gap-2"
+                      >
+                        {askMutation.isLoading ? (
+                          <ThreeDot
+                            variant="bounce"
+                            color="#ffac00"
+                            size="large"
+                            text="Đang tải nội dung từ server"
+                            textColor=""
+                          />
+                        ) : (
+                          <Bot className="h-4 w-4" />
+                        )}
+                        Hỏi Kyaro
                       </Button>
                     </div>
-                  </>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+                  </TabsContent>
+                </Tabs>
+              ) : (
+                <>
+                  {selectedThread?.source === "ai" ? (
+                    <>
+                      <Textarea
+                        placeholder="Hỏi trợ lý..."
+                        value={aiText}
+                        onChange={(e) => setAiText(e.target.value)}
+                        className="min-h-[120px]"
+                      />
+                      <AttachmentEditor
+                        value={aiAttachments}
+                        onChange={setAiAttachments}
+                      />
+                      <div className="flex justify-end">
+                        <Button
+                          onClick={askKyaro}
+                          disabled={askMutation.isLoading}
+                          className="gap-2"
+                        >
+                          {askMutation.isLoading ? (
+                            <ThreeDot
+                              variant="bounce"
+                              color="#ffac00"
+                              size="large"
+                              text="Đang tải nội dung từ server"
+                              textColor=""
+                            />
+                          ) : (
+                            <Bot className="h-4 w-4" />
+                          )}
+                          Gửi
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Textarea
+                        placeholder="Nhập tin nhắn..."
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        className="min-h-[120px]"
+                      />
+                      <AttachmentEditor
+                        value={replyAttachments}
+                        onChange={setReplyAttachments}
+                      />
+                      <div className="flex justify-end">
+                        <Button
+                          onClick={sendReply}
+                          disabled={humanMutation.isLoading}
+                          className="gap-2"
+                        >
+                          {humanMutation.isLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                          Gửi
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

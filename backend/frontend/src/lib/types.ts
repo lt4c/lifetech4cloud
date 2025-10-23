@@ -38,6 +38,19 @@ export interface VpsProduct {
   workers?: WorkerInfo[];
 }
 
+export interface GiftCode {
+  id: string;
+  title: string;
+  code: string;
+  reward_amount: number;
+  total_uses: number;
+  redeemed_count: number;
+  is_active: boolean;
+  created_by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface VpsSessionRdp {
   host: string | null;
   port: number | null;

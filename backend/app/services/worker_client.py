@@ -7,13 +7,17 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.models import Worker
+from app.settings import get_settings
 
 
 class WorkerClient:
-    def __init__(self, base_url: str | None = None) -> None:
+    def __init__(self, base_url: str | None = None, *, verify: bool | None = None) -> None:
+        if verify is None:
+            verify = get_settings().worker_verify_tls
         timeout = httpx.Timeout(300.0, connect=30.0)
-        self._client = httpx.AsyncClient(timeout=timeout)
+        self._client = httpx.AsyncClient(timeout=timeout, verify=verify)
         self._base_url = base_url.rstrip("/") if base_url else None
+        self._verify = verify
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -162,7 +166,7 @@ class WorkerClient:
         url = urljoin(base + "/", "tokenleft")
         # Use a local client to avoid relying on instance initialisation
         timeout = httpx.Timeout(10.0, connect=5.0)
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, verify=self._verify) as client:
             try:
                 response = await client.get(url)
                 response.raise_for_status()

@@ -78,6 +78,9 @@ class User(Base):
     reward_limits = relationship(
         "UserLimit", back_populates="user", passive_deletes=True
     )
+    gift_code_redemptions = relationship(
+        "GiftCodeRedemption", back_populates="user", passive_deletes=True
+    )
 
     def __repr__(self) -> str:  # pragma: no cover - debugging helper
         return f"User(id={self.id}, discord_id={self.discord_id})"
@@ -267,6 +270,52 @@ class LedgerEntry(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     user = relationship("User", back_populates="ledger_entries")
+
+
+class GiftCode(Base):
+    __tablename__ = "gift_codes"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_gift_codes_code"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(150), nullable=False)
+    code = Column(String(64), nullable=False)
+    reward_amount = Column(Integer, nullable=False)
+    total_uses = Column(Integer, nullable=False)
+    redeemed_count = Column(Integer, nullable=False, server_default="0", default=0)
+    is_active = Column(Boolean, nullable=False, server_default="true", default=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    redemptions = relationship(
+        "GiftCodeRedemption", back_populates="gift_code", cascade="all, delete-orphan"
+    )
+
+
+class GiftCodeRedemption(Base):
+    __tablename__ = "gift_code_redemptions"
+    __table_args__ = (
+        UniqueConstraint("gift_code_id", "user_id", name="uq_gift_code_redemptions_user"),
+        Index("ix_gift_code_redemptions_gift_code_id", "gift_code_id"),
+        Index("ix_gift_code_redemptions_user_id", "user_id"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    gift_code_id = Column(
+        UUID(as_uuid=True), ForeignKey("gift_codes.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    reward_amount = Column(Integer, nullable=False)
+    redeemed_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    gift_code = relationship("GiftCode", back_populates="redemptions")
+    user = relationship("User", back_populates="gift_code_redemptions")
 
 
 class AdReward(Base):

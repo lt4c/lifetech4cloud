@@ -29,21 +29,22 @@ import {
 import { useAuth } from "@/context/AuthContext";
 
 const menuItems = [
-  { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
-  { title: 'VPS', url: '/vps', icon: Server },
-  { title: 'Earn Coins', url: '/earn', icon: Gift },
-  { title: 'Gets Coin', url: '/gets-coin', icon: Coins },
-  { title: 'Support', url: '/support', icon: MessageSquare },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "VPS", url: "/vps", icon: Server },
+  { title: "Earn Coins", url: "/earn", icon: Gift },
+  { title: "Gets Coin", url: "/gets-coin", icon: Coins },
+  { title: "Support", url: "/support", icon: MessageSquare },
 ];
 
 const adminItems = [
-  { title: 'Announcements', url: '/admin/announcements', icon: Megaphone },
-  { title: 'Users', url: '/admin/users', icon: Users },
-  { title: 'Roles & Permissions', url: '/admin/roles', icon: Shield },
-  { title: 'VPS Products', url: '/admin/vps-products', icon: Package },
-  { title: 'Workers', url: '/admin/workers', icon: Zap },
-  { title: 'Analytics', url: '/admin/analytics', icon: TrendingUp },
-  { title: 'Settings', url: '/admin/settings', icon: Settings },
+  { title: "Announcements", url: "/admin/announcements", icon: Megaphone },
+  { title: "Users", url: "/admin/users", icon: Users },
+  { title: "Roles & Permissions", url: "/admin/roles", icon: Shield },
+  { title: "VPS Products", url: "/admin/vps-products", icon: Package },
+  { title: "Giftcode", url: "/admin/giftcodes", icon: Gift },
+  { title: "Workers", url: "/admin/workers", icon: Zap },
+  { title: "Analytics", url: "/admin/analytics", icon: TrendingUp },
+  { title: "Settings", url: "/admin/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -67,8 +68,12 @@ export function AppSidebar() {
             </div>
             {!collapsed && (
               <div>
-                <h2 className="text-sm font-bold gradient-text">LifeTech4Cloud</h2>
-                <p className="text-xs text-muted-foreground">Cửa hàng Cloud Gaming</p>
+                <h2 className="text-sm font-bold gradient-text">
+                  LifeTech4Cloud
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Cửa hàng Cloud Gaming
+                </p>
               </div>
             )}
           </div>

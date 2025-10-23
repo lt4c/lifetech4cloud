@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     blocked_asn: str = Field("", alias="ADS_BLOCKED_ASN")
     blocked_ips: str = Field("", alias="ADS_BLOCKED_IPS")
     ads_allowed_placements: str = Field("earn,daily,boost,test", alias="ADS_ALLOWED_PLACEMENTS")
+    worker_verify_tls: bool = Field(False, alias="WORKER_VERIFY_TLS")
 
     model_config = SettingsConfigDict(
         env_file=".env",

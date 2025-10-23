@@ -258,6 +258,36 @@ class VpsProductDTO(BaseModel):
     updated_at: datetime
     workers: list[WorkerListItem] = Field(default_factory=list)
 
+
+class GiftCodeDTO(BaseModel):
+    id: UUID
+    title: str
+    code: str
+    reward_amount: int
+    total_uses: int
+    redeemed_count: int
+    is_active: bool
+    created_by: UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class GiftCodeCreateRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=150)
+    code: str = Field(min_length=3, max_length=64)
+    reward_amount: int = Field(ge=1)
+    total_uses: int = Field(ge=1)
+    is_active: bool = True
+
+
+class GiftCodeUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=150)
+    code: str | None = Field(default=None, min_length=3, max_length=64)
+    reward_amount: int | None = Field(default=None, ge=1)
+    total_uses: int | None = Field(default=None, ge=1)
+    is_active: bool | None = None
+
+
 class AdsSettingsUpdateRequest(BaseModel):
     enabled: bool
 
