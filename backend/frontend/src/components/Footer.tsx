@@ -15,12 +15,12 @@ export function Footer() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-1.5">
           <Code2 className="h-3.5 w-3.5 text-primary" />
-          <span>Release: {version}</span>
+          <span>Phiên bản: {version}</span>
         </div>
 
         <div className="flex items-center gap-1.5 text-muted-foreground">
           <Activity className="h-3.5 w-3.5 text-primary" />
-          <span>© 2025 LT4C · ZynHash Production</span>
+          <span>Bản quyền thuộc về LT4C · ZynHash Production © 2025</span>
         </div>
       </div>
     </footer>
