@@ -1,3 +1,5 @@
+// Earn.tsx — fixed VI + mutationFn + chọn mạng QC
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Loader2, Play, ShieldAlert } from "lucide-react";
@@ -10,17 +12,17 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
 import {
   ApiError,
-  completeMonetagAd,
-  fetchRewardMetrics,
   fetchRewardPolicy,
+  fetchRewardMetrics,
   fetchWalletBalance,
   prepareRewardedAd,
+  completeMonetagAd,
 } from "@/lib/api-client";
 import type {
   PrepareAdResponse,
@@ -33,8 +35,11 @@ import type {
 declare global {
   interface Window {
     turnstile?: {
-      render?: (container: HTMLElement | string, options: Record<string, unknown>) => unknown;
-      execute?: (
+      render?: (
+        container: HTMLElement | string,
+        options: Record<string, unknown>,
+      ) => unknown;
+      execute: (
         siteKey: string,
         options?: { action?: string; cData?: string },
       ) => Promise<string>;
@@ -56,19 +61,16 @@ let imaLoader: Promise<void> | null = null;
 const monetagLoaders = new Map<string, Promise<void>>();
 
 const ensureTurnstile = async (): Promise<void> => {
-  if (!TURNSTILE_SITE_KEY || typeof window === "undefined") {
-    return;
-  }
-  if (window.turnstile) {
-    return;
-  }
+  if (!TURNSTILE_SITE_KEY || typeof window === "undefined") return;
+  if (window.turnstile) return;
   if (!turnstileLoader) {
     turnstileLoader = new Promise((resolve, reject) => {
       const script = document.createElement("script");
       script.src = `https://challenges.cloudflare.com/turnstile/v0/api.js?render=${TURNSTILE_SITE_KEY}`;
       script.async = true;
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error("KhÃ´ng thá»ƒ táº£i Cloudflare Turnstile"));
+      script.onerror = () =>
+        reject(new Error("Không tải được script Turnstile"));
       document.head.appendChild(script);
     });
   }
@@ -76,19 +78,16 @@ const ensureTurnstile = async (): Promise<void> => {
 };
 
 const ensureImaSdk = async (): Promise<void> => {
-  if (typeof window === "undefined") {
-    throw new Error("IMA SDK yÃªu cáº§u mÃ´i trÆ°á»ng trÃ¬nh duyá»‡t");
-  }
-  if (window.google?.ima) {
-    return;
-  }
+  if (typeof window === "undefined")
+    throw new Error("IMA SDK cần môi trường trình duyệt");
+  if (window.google?.ima) return;
   if (!imaLoader) {
     imaLoader = new Promise((resolve, reject) => {
       const script = document.createElement("script");
       script.src = "https://imasdk.googleapis.com/js/sdkloader/ima3.js";
       script.async = true;
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error("KhÃ´ng thá»ƒ táº£i Google IMA SDK"));
+      script.onerror = () => reject(new Error("Không tải được Google IMA SDK"));
       document.head.appendChild(script);
     });
   }
@@ -96,15 +95,10 @@ const ensureImaSdk = async (): Promise<void> => {
 };
 
 const ensureMonetagScript = async (scriptUrl: string): Promise<void> => {
-  if (!scriptUrl) {
-    throw new Error("Thiáº¿u script Monetag");
-  }
-  if (typeof document === "undefined") {
-    throw new Error("Monetag yÃªu cáº§u mÃ´i trÆ°á»ng trÃ¬nh duyá»‡t");
-  }
-  if (document.querySelector(`script[data-monetag-src="${scriptUrl}"]`)) {
-    return;
-  }
+  if (!scriptUrl) throw new Error("Thiếu Monetag script URL");
+  if (typeof window === "undefined") return;
+  if (document.querySelector(`script[data-monetag-src="${scriptUrl}"]`)) return;
+
   let loader = monetagLoaders.get(scriptUrl);
   if (!loader) {
     loader = new Promise<void>((resolve, reject) => {
@@ -113,7 +107,7 @@ const ensureMonetagScript = async (scriptUrl: string): Promise<void> => {
       script.async = true;
       (script as HTMLScriptElement).dataset.monetagSrc = scriptUrl;
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error("KhÃ´ng thá»ƒ táº£i script Monetag"));
+      script.onerror = () => reject(new Error("Không tải được Monetag"));
       document.head.appendChild(script);
     });
     monetagLoaders.set(scriptUrl, loader);
@@ -122,9 +116,7 @@ const ensureMonetagScript = async (scriptUrl: string): Promise<void> => {
 };
 
 const showMonetagAd = (zoneId: string, container: HTMLElement | null) => {
-  if (!container) {
-    throw new Error("KhÃ´ng tÃ¬m tháº¥y vÃ¹ng hiá»ƒn thá»‹ Monetag");
-  }
+  if (!container) return;
   container.innerHTML = "";
   try {
     if (window.monetag?.display) {
@@ -132,31 +124,27 @@ const showMonetagAd = (zoneId: string, container: HTMLElement | null) => {
       return;
     }
   } catch (error) {
-    console.warn("Monetag display() failed", error);
+    console.warn("monetag.display() lỗi", error);
   }
-  try {
-    if (window.monetag?.run) {
+  if (window.monetag?.run) {
+    try {
       window.monetag.run(zoneId);
       return;
+    } catch (error) {
+      console.warn("monetag.run() lỗi", error);
     }
-  } catch (error) {
-    console.warn("Monetag run() failed", error);
   }
   const fallback = document.createElement("div");
   fallback.className = "monetag-zone";
-  fallback.dataset.zone = zoneId;
+  fallback.setAttribute("data-zone", zoneId);
   container.appendChild(fallback);
 };
 
 const executeTurnstile = async (): Promise<string | null> => {
-  if (!TURNSTILE_SITE_KEY) {
-    return null;
-  }
+  if (!TURNSTILE_SITE_KEY) return null;
   await ensureTurnstile();
   const turnstile = window.turnstile;
-  if (!turnstile?.execute) {
-    throw new Error("Cloudflare Turnstile chÆ°a sáºµn sÃ ng");
-  }
+  if (!turnstile?.execute) throw new Error("Turnstile không sẵn sàng");
   return turnstile.execute(TURNSTILE_SITE_KEY, { action: "ads_prepare" });
 };
 
@@ -166,9 +154,12 @@ const signPrepareRequest = async (
   timestamp: string,
   placement: string,
 ): Promise<string | null> => {
-  if (!CLIENT_SIGNING_KEY || typeof window === "undefined" || !window.crypto?.subtle) {
+  if (
+    !CLIENT_SIGNING_KEY ||
+    typeof window === "undefined" ||
+    !window.crypto?.subtle
+  )
     return null;
-  }
   const encoder = new TextEncoder();
   const keyMaterial = encoder.encode(CLIENT_SIGNING_KEY);
   const cryptoKey = await window.crypto.subtle.importKey(
@@ -178,52 +169,49 @@ const signPrepareRequest = async (
     false,
     ["sign"],
   );
-  const payload = encoder.encode(`${userId}|${clientNonce}|${timestamp}|${placement}`);
+  const payload = encoder.encode(
+    `${userId}|${clientNonce}|${timestamp}|${placement}`,
+  );
   const buffer = await window.crypto.subtle.sign("HMAC", cryptoKey, payload);
   return Array.from(new Uint8Array(buffer))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 };
 
 const collectClientHints = (): Record<string, string> => {
-  if (typeof navigator === "undefined") {
-    return {};
-  }
+  if (typeof navigator === "undefined") return {};
   const hints: Record<string, string> = { ua: navigator.userAgent };
-  const uaData = (navigator as unknown as { userAgentData?: any }).userAgentData;
+  const uaData = (navigator as unknown as { userAgentData?: any })
+    .userAgentData;
   if (uaData) {
     hints.platform = uaData.platform ?? "";
     hints.mobile = String(uaData.mobile ?? false);
     const brands =
-      uaData.brands ?? uaData.getHighEntropyValues?.(["model", "platformVersion"]);
+      uaData.brands ??
+      uaData.getHighEntropyValues?.(["model", "platformVersion"]);
     if (Array.isArray(brands)) {
       hints.brands = brands
         .map(
-          (item: { brand?: string; version?: string }) =>
-            `${item.brand ?? ""}:${item.version ?? ""}`,
+          (it: { brand?: string; version?: string }) =>
+            `${it.brand ?? ""}:${it.version ?? ""}`,
         )
         .join("|");
     }
   }
   try {
     hints.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
-  } catch {
-    /* ignore */
-  }
+  } catch {}
   return hints;
 };
 
 const formatSeconds = (seconds: number): string => {
-  if (!Number.isFinite(seconds)) {
-    return "--";
-  }
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
+  if (!Number.isFinite(seconds)) return "--";
+  if (seconds < 60) return `${seconds}s`;
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}m ${secs}s`;
 };
+
 const providerDisplayName = (provider: string): string => {
   switch (provider) {
     case "monetag":
@@ -233,6 +221,19 @@ const providerDisplayName = (provider: string): string => {
     default:
       return provider.toUpperCase();
   }
+};
+
+const normalizeProviderValue = (
+  value: unknown,
+  fallback = "monetag",
+): string => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed) {
+      return trimmed.toLowerCase();
+    }
+  }
+  return fallback;
 };
 
 type EarnStatus =
@@ -261,29 +262,34 @@ const Earn = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const adContainerRef = useRef<HTMLDivElement | null>(null);
   const monetagContainerRef = useRef<HTMLDivElement | null>(null);
+
   const [status, setStatus] = useState<EarnStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [metricsSnapshot, setMetricsSnapshot] =
     useState<RewardMetricsSummary>(initialMetrics);
+
+  // Mặc định hiển thị Monetag, user muốn chọn được => luôn show selector
   const [selectedProvider, setSelectedProvider] = useState<string>("monetag");
   const [activeProvider, setActiveProvider] = useState<string>("monetag");
+
   const [monetagElapsed, setMonetagElapsed] = useState<number>(0);
   const [monetagPaused, setMonetagPaused] = useState<boolean>(false);
   const monetagTimerRef = useRef<number | null>(null);
   const monetagElapsedRef = useRef<number>(0);
   const monetagActiveRef = useRef<boolean>(false);
   const monetagCancelRef = useRef<((reason: Error) => void) | null>(null);
-  const monetagCleanupRef = useRef<(() => void) | null>(null);
 
-  const policyQuery = useQuery<RewardPolicy>({
+  // Queries
+  const {
+    data: policy,
+    isLoading: isLoadingPolicy,
+    refetch: refetchPolicy,
+  } = useQuery<RewardPolicy>({
     queryKey: ["ads-policy"],
     queryFn: fetchRewardPolicy,
     staleTime: 60_000,
   });
-  const policy = policyQuery.data;
-  const isLoadingPolicy = policyQuery.isLoading;
-  const refetchPolicy = policyQuery.refetch;
 
   const walletQuery = useQuery<WalletBalance>({
     queryKey: ["wallet-balance"],
@@ -299,129 +305,32 @@ const Earn = () => {
     queryKey: ["reward-metrics"],
     queryFn: fetchRewardMetrics,
     staleTime: 60_000,
+    onSuccess: (data) => setMetricsSnapshot(data),
   });
   const refetchMetrics = metricsQuery.refetch;
 
-  const cooldownRemaining = useMemo(() => {
-    if (!cooldownUntil) {
-      return 0;
-    }
-    return Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
-  }, [cooldownUntil]);
+  // FIX: TanStack Query v5 yêu cầu { mutationFn } => hết lỗi "No mutationFn found"
+  const prepareMutation = useMutation({ mutationFn: prepareRewardedAd });
 
-  useEffect(() => {
-    if (!cooldownUntil) {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      if (Date.now() >= cooldownUntil) {
-        setCooldownUntil(null);
-        setStatus("idle");
-        window.clearInterval(timer);
-      }
-    }, 1_000);
-    return () => window.clearInterval(timer);
-  }, [cooldownUntil]);
-
-  useEffect(() => {
-    if (metricsQuery.data) {
-      setMetricsSnapshot(metricsQuery.data);
-    }
-  }, [metricsQuery.data]);
-
-  const stopMonetagWatcher = useCallback(() => {
-    monetagActiveRef.current = false;
-    if (monetagCancelRef.current) {
-      monetagCancelRef.current(new Error("Monetag watcher cancelled"));
-      return;
-    }
-    if (monetagCleanupRef.current) {
-      monetagCleanupRef.current();
-      monetagCleanupRef.current = null;
-    }
-  }, []);
-
-  const startMonetagWatcher = useCallback(
-    (durationSeconds: number) => {
-      if (typeof document === "undefined") {
-        throw new Error("Monetag khÃ´ng kháº£ dá»¥ng trong mÃ´i trÆ°á»ng hiá»‡n táº¡i");
-      }
-      stopMonetagWatcher();
-
-      return new Promise<void>((resolve, reject) => {
-        monetagActiveRef.current = true;
-        monetagElapsedRef.current = 0;
-        setMonetagElapsed(0);
-        setMonetagPaused(document.hidden ?? false);
-
-        const handleVisibility = () => {
-          setMonetagPaused(document.hidden ?? false);
-        };
-
-        const cleanup = () => {
-          if (monetagTimerRef.current !== null) {
-            window.clearInterval(monetagTimerRef.current);
-            monetagTimerRef.current = null;
-          }
-          document.removeEventListener("visibilitychange", handleVisibility);
-          monetagActiveRef.current = false;
-          monetagCancelRef.current = null;
-          monetagCleanupRef.current = null;
-          setMonetagPaused(false);
-        };
-
-        const tick = () => {
-          if (!monetagActiveRef.current) {
-            return;
-          }
-          if (document.hidden) {
-            return;
-          }
-          monetagElapsedRef.current += 1;
-          setMonetagElapsed(monetagElapsedRef.current);
-          if (monetagElapsedRef.current >= durationSeconds) {
-            cleanup();
-            resolve();
-          }
-        };
-
-        document.addEventListener("visibilitychange", handleVisibility);
-        monetagTimerRef.current = window.setInterval(tick, 1_000);
-        monetagCleanupRef.current = cleanup;
-        monetagCancelRef.current = (reason: Error) => {
-          cleanup();
-          reject(reason);
-        };
-        handleVisibility();
-      });
-    },
-    [stopMonetagWatcher],
-  );
-
-  useEffect(() => {
-    return () => {
-      stopMonetagWatcher();
-    };
-  }, [stopMonetagWatcher]);
-
+  // Provider options: luôn render ít nhất một lựa chọn, không ẩn selector
   const providerOptions = useMemo(() => {
-    const providers = policy?.providers ?? {};
-    const entries: Array<[string, RewardProviderConfig | undefined]> = [];
+    const enabledEntries = Object.entries(policy?.providers ?? {}).filter(
+      ([, cfg]) => (cfg as RewardProviderConfig | undefined)?.enabled,
+    ) as Array<[string, RewardProviderConfig | undefined]>;
 
-    Object.entries(providers).forEach(([key, cfg]) => {
-      if (cfg?.enabled) {
-        entries.push([key.toLowerCase(), cfg]);
-      }
-    });
+    if (enabledEntries.length > 0) return enabledEntries;
 
-    if (entries.length === 0) {
-      entries.push([
-        "monetag",
-        (providers.monetag as RewardProviderConfig | undefined) ?? undefined,
-      ]);
+    // Fallback hiển thị Monetag, và nếu GMA có trong policy thì thêm luôn
+    const fallbacks: Array<[string, RewardProviderConfig | undefined]> = [];
+    fallbacks.push([
+      "monetag",
+      (policy?.providers?.monetag as RewardProviderConfig | undefined) ??
+        undefined,
+    ]);
+    if (policy?.providers?.gma) {
+      fallbacks.push(["gma", policy.providers.gma as RewardProviderConfig]);
     }
-
-    return entries;
+    return fallbacks.length ? fallbacks : [["monetag", undefined]];
   }, [policy]);
 
   const requiredDuration = policy?.requiredDuration ?? 30;
@@ -432,249 +341,321 @@ const Earn = () => {
       : 0;
 
   useEffect(() => {
-    const enabledKeys = providerOptions.map(([value]) => value);
-    if (enabledKeys.length === 0) {
-      if (selectedProvider !== "monetag") {
-        setSelectedProvider("monetag");
-      }
-      if (activeProvider !== "monetag") {
-        setActiveProvider("monetag");
-      }
-      return;
-    }
-    const preferred = (policy?.defaultProvider ?? enabledKeys[0]).toLowerCase();
-    if (!enabledKeys.includes(selectedProvider)) {
-      setSelectedProvider(preferred);
-    }
-    if (!enabledKeys.includes(activeProvider)) {
-      setActiveProvider(preferred);
-    }
-  }, [providerOptions, policy, selectedProvider, activeProvider]);
+    if (!policy) return;
+    const enabledKeys = providerOptions.map(([key]) => key);
+    const preferred = normalizeProviderValue(policy.defaultProvider);
+    const fallback = enabledKeys.includes(preferred)
+      ? preferred
+      : (enabledKeys[0] ?? "monetag");
+    setSelectedProvider((cur) => (enabledKeys.includes(cur) ? cur : fallback));
+    setActiveProvider((cur) => (enabledKeys.includes(cur) ? cur : fallback));
+  }, [policy, providerOptions]);
 
-  const runImaAd = useCallback(
-    async (adTagUrl: string) => {
-      if (!adTagUrl) {
-        throw new Error("Thiáº¿u ad tag cho Google IMA");
-      }
-      await ensureImaSdk();
-      const google = window.google;
-      const videoElement = videoRef.current;
-      const containerElement = adContainerRef.current;
-      if (!google?.ima || !videoElement || !containerElement) {
-        throw new Error("Google IMA chÆ°a sáºµn sÃ ng");
-      }
+  useEffect(() => {
+    if (!["idle", "success", "error"].includes(status)) return;
+    setActiveProvider((cur) =>
+      cur === selectedProvider ? cur : selectedProvider,
+    );
+  }, [selectedProvider, status]);
 
-      return new Promise<void>((resolve, reject) => {
-        const adDisplayContainer = new google.ima.AdDisplayContainer(
-          containerElement,
-          videoElement,
-        );
-        try {
-          adDisplayContainer.initialize();
-        } catch {
-          /* ignore */
+  const cooldownRemaining = useMemo(() => {
+    if (!cooldownUntil) return 0;
+    return Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+  }, [cooldownUntil]);
+
+  useEffect(() => {
+    if (!cooldownUntil) return;
+    const timer = setInterval(() => {
+      if (Date.now() >= cooldownUntil) {
+        setCooldownUntil(null);
+        setStatus("idle");
+        clearInterval(timer);
+      }
+    }, 1_000);
+    return () => clearInterval(timer);
+  }, [cooldownUntil]);
+
+  const stopMonetagWatcher = useCallback(() => {
+    if (monetagTimerRef.current !== null) {
+      window.clearTimeout(monetagTimerRef.current);
+      monetagTimerRef.current = null;
+    }
+    monetagActiveRef.current = false;
+    const cancel = monetagCancelRef.current;
+    if (cancel) {
+      monetagCancelRef.current = null;
+      cancel(new Error("Đã hủy quảng cáo"));
+    }
+  }, []);
+
+  const waitForMonetagDuration = useCallback(
+    (requiredSeconds: number) =>
+      new Promise<number>((resolve, reject) => {
+        if (typeof window === "undefined") {
+          reject(new Error("Theo dõi Monetag cần trình duyệt"));
+          return;
         }
+        monetagElapsedRef.current = 0;
+        monetagActiveRef.current = true;
+        setMonetagElapsed(0);
+        setMonetagPaused(false);
 
-        const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
-        adsLoader.addEventListener(
-          google.ima.AdErrorEvent.Type.AD_ERROR,
-          (event: any) => {
-            adsLoader.destroy();
-            reject(
-              new Error(event.getError()?.toString() ?? "Lá»—i phÃ¡t quáº£ng cÃ¡o"),
-            );
-          },
-          false,
-        );
+        let settled = false;
+        const handleResolve = (value: number) => {
+          if (settled) return;
+          settled = true;
+          monetagCancelRef.current = null;
+          resolve(value);
+        };
+        const handleCancel = (reason: Error) => {
+          if (settled) return;
+          settled = true;
+          monetagCancelRef.current = null;
+          reject(reason);
+        };
 
-        adsLoader.addEventListener(
-          google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
-          (event: any) => {
-            try {
-              const adsManager = event.getAdsManager(videoElement);
-              adsManager.addEventListener(
-                google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED,
-                () => {
-                  videoElement.pause();
-                },
-              );
-              adsManager.addEventListener(
-                google.ima.AdEvent.Type.STARTED,
-                () => {
-                  setStatus("playing");
-                },
-              );
-              adsManager.addEventListener(
-                google.ima.AdEvent.Type.COMPLETE,
-                () => {
-                  resolve();
-                },
-              );
-              adsManager.addEventListener(
-                google.ima.AdEvent.Type.ALL_ADS_COMPLETED,
-                () => {
-                  resolve();
-                },
-              );
-              adsManager.addEventListener(
-                google.ima.AdErrorEvent.Type.AD_ERROR,
-                (errEvent: any) => {
-                  reject(
-                    new Error(
-                      errEvent.getError()?.toString() ?? "Lá»—i phÃ¡t quáº£ng cÃ¡o",
-                    ),
-                  );
-                },
-              );
-              adsManager.init(
-                containerElement.clientWidth || 640,
-                containerElement.clientHeight || 360,
-                google.ima.ViewMode.NORMAL,
-              );
-              adsManager.start();
-            } catch (error) {
-              reject(error instanceof Error ? error : new Error(String(error)));
+        monetagCancelRef.current = handleCancel;
+
+        const tick = () => {
+          if (!monetagActiveRef.current) {
+            handleCancel(new Error("Đã hủy quảng cáo"));
+            return;
+          }
+
+          const visible =
+            typeof document !== "undefined" &&
+            document.visibilityState === "visible" &&
+            document.hasFocus();
+
+          setMonetagPaused((prev) => {
+            const next = !visible;
+            return prev === next ? prev : next;
+          });
+
+          if (visible) {
+            monetagElapsedRef.current += 0.25;
+            const elapsed = monetagElapsedRef.current;
+            setMonetagElapsed((prev) => {
+              const next = Math.min(requiredSeconds, Math.floor(elapsed));
+              return next === prev ? prev : next;
+            });
+            if (elapsed >= requiredSeconds) {
+              handleResolve(Math.round(elapsed));
+              return;
             }
-          },
-          false,
-        );
+          }
 
-        const request = new google.ima.AdsRequest();
-        request.adTagUrl = adTagUrl;
-        request.linearAdSlotWidth = containerElement.clientWidth || 640;
-        request.linearAdSlotHeight = containerElement.clientHeight || 360;
-        request.nonLinearAdSlotWidth = containerElement.clientWidth || 640;
-        request.nonLinearAdSlotHeight =
-          (containerElement.clientHeight || 360) / 3;
-        request.setAdWillAutoPlay(true);
-        request.setAdWillPlayMuted(false);
-
-        try {
-          adsLoader.requestAds(request);
-        } catch (error) {
-          reject(error instanceof Error ? error : new Error(String(error)));
-        }
-      });
-    },
+          monetagTimerRef.current = window.setTimeout(tick, 250);
+        };
+        monetagTimerRef.current = window.setTimeout(tick, 250);
+      }),
     [],
+  );
+
+  useEffect(
+    () => () => {
+      stopMonetagWatcher();
+    },
+    [stopMonetagWatcher],
+  );
+
+  const runImaAd = useCallback(async (adTagUrl: string) => {
+    await ensureImaSdk();
+    const google = window.google;
+    const videoElement = videoRef.current;
+    const containerElement = adContainerRef.current;
+    if (!google?.ima || !videoElement || !containerElement) {
+      throw new Error("IMA SDK chưa sẵn sàng");
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const adDisplayContainer = new google.ima.AdDisplayContainer(
+        containerElement,
+        videoElement,
+      );
+      try {
+        adDisplayContainer.initialize();
+      } catch {}
+
+      const adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+      adsLoader.addEventListener(
+        google.ima.AdErrorEvent.Type.AD_ERROR,
+        (event: any) => {
+          adsLoader.destroy();
+          reject(new Error(event.getError()?.toString() ?? "Lỗi phát IMA"));
+        },
+      );
+
+      adsLoader.addEventListener(
+        google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED,
+        (event: any) => {
+          try {
+            const adsManager = event.getAdsManager(videoElement);
+            adsManager.addEventListener(
+              google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED,
+              () => videoElement.pause(),
+            );
+            adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, () =>
+              setStatus("playing"),
+            );
+            adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, () =>
+              resolve(),
+            );
+            adsManager.addEventListener(
+              google.ima.AdEvent.Type.ALL_ADS_COMPLETED,
+              () => resolve(),
+            );
+            adsManager.addEventListener(
+              google.ima.AdErrorEvent.Type.AD_ERROR,
+              (err: any) => {
+                reject(
+                  new Error(err.getError()?.toString() ?? "Lỗi phát quảng cáo"),
+                );
+              },
+            );
+            adsManager.init(
+              containerElement.clientWidth || 640,
+              containerElement.clientHeight || 360,
+              google.ima.ViewMode.NORMAL,
+            );
+            adsManager.start();
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        },
+      );
+
+      const request = new google.ima.AdsRequest();
+      request.adTagUrl = adTagUrl;
+      request.linearAdSlotWidth = containerElement.clientWidth || 640;
+      request.linearAdSlotHeight = containerElement.clientHeight || 360;
+      request.nonLinearAdSlotWidth = containerElement.clientWidth || 640;
+      request.nonLinearAdSlotHeight =
+        (containerElement.clientHeight || 360) / 3;
+      request.setAdWillAutoPlay(true);
+      request.setAdWillPlayMuted(false);
+
+      try {
+        adsLoader.requestAds(request);
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }, []);
+
+  const runMonetagFlow = useCallback(
+    async (
+      session: PrepareAdResponse,
+      requiredSeconds: number,
+      minInterval: number,
+    ) => {
+      if (!session.ticket || !session.zoneId || !session.scriptUrl) {
+        throw new Error("Cấu hình Monetag chưa đầy đủ");
+      }
+      const container = monetagContainerRef.current;
+      if (!container) throw new Error("Không tìm thấy vùng hiển thị Monetag");
+
+      setStatus("loading");
+      setMessage(null);
+
+      await ensureMonetagScript(session.scriptUrl);
+      container.innerHTML = "";
+      showMonetagAd(session.zoneId, container);
+      setStatus("playing");
+
+      try {
+        const watchedSeconds = await waitForMonetagDuration(requiredSeconds);
+        setStatus("verifying");
+        const result = await completeMonetagAd({
+          nonce: session.nonce,
+          ticket: session.ticket,
+          durationSec: Math.round(watchedSeconds),
+          deviceHash: session.deviceHash,
+          provider: "monetag",
+        });
+        const gained = Number(result.added ?? 0);
+        setStatus("success");
+        setMessage(
+          gained > 0
+            ? `+${gained} xu đã được cộng.`
+            : "Xác minh xong. Số dư sẽ cập nhật sớm.",
+        );
+        setCooldownUntil(Date.now() + minInterval * 1000);
+        setMonetagElapsed(requiredSeconds);
+        setMonetagPaused(false);
+        refresh();
+        refetchWallet();
+        refetchMetrics();
+      } finally {
+        monetagCancelRef.current = null;
+        stopMonetagWatcher();
+      }
+    },
+    [
+      waitForMonetagDuration,
+      refresh,
+      refetchWallet,
+      refetchMetrics,
+      stopMonetagWatcher,
+    ],
   );
 
   const waitForWalletUpdate = useCallback(
     async (previousBalance: number): Promise<number> => {
       for (let attempt = 0; attempt < 6; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 1_200));
+        await new Promise((r) => setTimeout(r, 1_200));
         const result = await refetchWallet();
         const currentBalance = result.data?.balance ?? previousBalance;
-        if (currentBalance > previousBalance) {
-          return currentBalance;
-        }
+        if (currentBalance > previousBalance) return currentBalance;
       }
       return previousBalance;
     },
     [refetchWallet],
   );
 
-  const runMonetagFlow = useCallback(
-    async (response: PrepareAdResponse, durationSeconds: number) => {
-      if (typeof document === "undefined") {
-        throw new Error("Monetag khÃ´ng kháº£ dá»¥ng trong mÃ´i trÆ°á»ng hiá»‡n táº¡i");
-      }
-      const container = monetagContainerRef.current;
-      if (!container) {
-        throw new Error("KhÃ´ng thá»ƒ khá»Ÿi táº¡o vÃ¹ng hiá»ƒn thá»‹ Monetag");
-      }
-      const zoneId =
-        response.zoneId ?? policy?.providers?.monetag?.zoneId ?? null;
-      const scriptUrl =
-        response.scriptUrl ?? policy?.providers?.monetag?.scriptUrl ?? null;
-      const ticket = response.ticket;
-      if (!zoneId || !scriptUrl || !ticket) {
-        throw new Error("Thiáº¿u cáº¥u hÃ¬nh Monetag tá»« mÃ¡y chá»§");
-      }
-
-      await ensureMonetagScript(scriptUrl);
-      showMonetagAd(zoneId, container);
-      setActiveProvider("monetag");
-      setStatus("playing");
-      setMessage("Giá»¯ tab nÃ y hiá»ƒn thá»‹ cho tá»›i khi tiáº¿n trÃ¬nh hoÃ n táº¥t.");
-
-      const watchDuration = Math.max(1, Math.round(durationSeconds));
-
-      try {
-        await startMonetagWatcher(watchDuration);
-      } catch (error) {
-        throw error instanceof Error ? error : new Error(String(error));
-      }
-
-      try {
-        setStatus("verifying");
-        const result = await completeMonetagAd({
-          nonce: response.nonce,
-          ticket,
-          durationSec: Math.max(
-            watchDuration,
-            Math.round(monetagElapsedRef.current),
-          ),
-          deviceHash: response.deviceHash,
-          provider: response.provider,
-        });
-        if (!result.ok) {
-          throw new Error("Há»‡ thá»‘ng khÃ´ng xÃ¡c nháº­n Ä‘Æ°á»£c lÆ°á»£t xem Monetag.");
-        }
-        return result;
-      } finally {
-        stopMonetagWatcher();
-      }
-    },
-    [policy, startMonetagWatcher, stopMonetagWatcher],
-  );
-
-  const prepareMutation = useMutation(prepareRewardedAd);
-
   const handleWatchAd = useCallback(async () => {
     if (!profile) {
-      setMessage("Báº¡n cáº§n Ä‘Äƒng nháº­p Ä‘á»ƒ nháº­n thÆ°á»Ÿng.");
+      setMessage("Đăng nhập để nhận thưởng.");
       return;
     }
     if (!policy) {
-      setMessage("KhÃ´ng thá»ƒ táº£i chÃ­nh sÃ¡ch pháº§n thÆ°á»Ÿng.");
+      setMessage("Đang tải chính sách thưởng, thử lại sau.");
       return;
     }
     if (cooldownUntil && cooldownUntil > Date.now()) {
       setStatus("error");
       setMessage(
-        `Báº¡n Ä‘ang trong thá»i gian chá» ${formatSeconds(cooldownRemaining)}.`,
+        `Bạn đang trong thời gian chờ ${formatSeconds(cooldownRemaining)}.`,
       );
       return;
     }
 
     setStatus("preparing");
     setMessage(null);
+    setMonetagElapsed(0);
+    setMonetagPaused(false);
 
-    const turnstileToken = await executeTurnstile().catch((error) => {
-      console.warn("turnstile", error);
+    const turnstileToken = await executeTurnstile().catch((e) => {
+      console.warn("Turnstile fail", e);
       return null;
     });
 
     const clientNonce = crypto.randomUUID();
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const signature =
-      (await signPrepareRequest(
-        profile.id,
-        clientNonce,
-        timestamp,
-        PLACEMENT,
-      )) ?? null;
+    const signature = await signPrepareRequest(
+      profile.id,
+      clientNonce,
+      timestamp,
+      PLACEMENT,
+    );
+
     const hints = collectClientHints();
+    const providerChoice = normalizeProviderValue(
+      selectedProvider,
+      normalizeProviderValue(policy?.defaultProvider),
+    );
+
     const startingBalance = walletBalance;
-
-    const providerChoice = (
-      selectedProvider ||
-      policy.defaultProvider ||
-      providerOptions[0]?.[0] ||
-      "monetag"
-    ).toLowerCase();
-
     let prepareResponse: PrepareAdResponse;
     try {
       prepareResponse = await prepareMutation.mutateAsync({
@@ -689,50 +670,54 @@ const Earn = () => {
     } catch (error) {
       setStatus("error");
       if (error instanceof ApiError) {
-        const detail =
-          (error.data as { detail?: string })?.detail ?? error.message;
-        setMessage(detail);
-        if (detail?.toLowerCase().includes("cooldown")) {
+        const rawDetail = (error.data as { detail?: unknown } | undefined)
+          ?.detail;
+        let detailMessage: string | undefined;
+        if (typeof rawDetail === "string") {
+          detailMessage = rawDetail;
+        } else if (Array.isArray(rawDetail) && rawDetail.length > 0) {
+          const first = rawDetail[0] as { msg?: string } | string;
+          if (typeof first === "string") {
+            detailMessage = first;
+          } else if (typeof first?.msg === "string") {
+            detailMessage = first.msg;
+          }
+        }
+        detailMessage ??= error.message;
+        setMessage(detailMessage);
+        if (
+          typeof detailMessage === "string" &&
+          detailMessage.toLowerCase().includes("cooldown")
+        ) {
           setCooldownUntil(Date.now() + minIntervalSeconds * 1000);
         }
       } else if (error instanceof Error) {
         setMessage(error.message);
       } else {
-        setMessage("KhÃ´ng thá»ƒ chuáº©n bá»‹ quáº£ng cÃ¡o. Vui lÃ²ng thá»­ láº¡i.");
+        setMessage("Không chuẩn bị được quảng cáo, thử lại.");
       }
       return;
     }
 
-    const effectiveProvider = (
-      prepareResponse.provider ?? providerChoice
-    ).toLowerCase();
+    const effectiveProvider = normalizeProviderValue(
+      prepareResponse.provider ?? providerChoice,
+    );
     setActiveProvider(effectiveProvider);
 
     if (effectiveProvider === "monetag") {
       try {
-        setStatus("loading");
-        const result = await runMonetagFlow(
+        await runMonetagFlow(
           prepareResponse,
           requiredDuration,
+          minIntervalSeconds,
         );
-        setStatus("success");
-        const gained = Math.max(0, result.added ?? 0);
-        if (gained > 0) {
-          setMessage(`+${gained} xu Ä‘Ã£ Ä‘Æ°á»£c cá»™ng vÃ o vÃ­ cá»§a báº¡n.`);
-        } else {
-          setMessage("Quáº£ng cÃ¡o Ä‘Ã£ hoÃ n táº¥t. Sá»‘ dÆ° sáº½ Ä‘Æ°á»£c cáº­p nháº­t sá»›m.");
-        }
-        setCooldownUntil(Date.now() + minIntervalSeconds * 1000);
-        refresh();
-        refetchWallet();
-        refetchMetrics();
       } catch (error) {
         setStatus("error");
-        if (error instanceof Error) {
-          setMessage(error.message);
-        } else {
-          setMessage("KhÃ´ng thá»ƒ hoÃ n thÃ nh quáº£ng cÃ¡o Monetag. Vui lÃ²ng thá»­ láº¡i.");
-        }
+        setMessage(
+          error instanceof Error ? error.message : "Monetag session thất bại.",
+        );
+        setMonetagElapsed(0);
+        setMonetagPaused(false);
       }
       return;
     }
@@ -742,91 +727,101 @@ const Earn = () => {
         setStatus("loading");
         setMessage(null);
         stopMonetagWatcher();
-        if (!prepareResponse.adTagUrl) {
-          throw new Error("Thiáº¿u ad tag cho Google IMA");
-        }
+        setMonetagElapsed(0);
+        setMonetagPaused(false);
+
+        if (!prepareResponse.adTagUrl)
+          throw new Error("Thiếu adTagUrl cho Google Ads.");
         await runImaAd(prepareResponse.adTagUrl);
+
         setStatus("verifying");
         const newBalance = await waitForWalletUpdate(startingBalance);
+
         if (newBalance > startingBalance) {
           const gained = newBalance - startingBalance;
           setStatus("success");
-          setMessage(`+${gained} xu Ä‘Ã£ Ä‘Æ°á»£c cá»™ng vÃ o vÃ­ cá»§a báº¡n.`);
+          setMessage(`+${gained} xu đã được cộng.`);
+          setCooldownUntil(Date.now() + minIntervalSeconds * 1000);
+          refresh();
+          refetchWallet();
+          refetchMetrics();
         } else {
           setStatus("success");
-          setMessage("Quáº£ng cÃ¡o Ä‘Ã£ hoÃ n táº¥t. Sá»‘ dÆ° sáº½ Ä‘Æ°á»£c cáº­p nháº­t sá»›m.");
+          setMessage("Hoàn thành. Số dư sẽ cập nhật sớm.");
+          setCooldownUntil(Date.now() + minIntervalSeconds * 1000);
         }
-        setCooldownUntil(Date.now() + minIntervalSeconds * 1000);
-        refresh();
-        refetchWallet();
-        refetchMetrics();
       } catch (error) {
         setStatus("error");
-        if (error instanceof Error) {
-          setMessage(error.message);
-        } else {
-          setMessage("KhÃ´ng thá»ƒ phÃ¡t quáº£ng cÃ¡o. Vui lÃ²ng thá»­ láº¡i.");
-        }
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Không phát được quảng cáo, thử lại.",
+        );
       }
       return;
     }
 
     setStatus("error");
-    setMessage("NhÃ  cung cáº¥p quáº£ng cÃ¡o khÃ´ng Ä‘Æ°á»£c há»— trá»£.");
+    setMessage("Nhà quảng cáo không được hỗ trợ.");
   }, [
     profile,
     policy,
     cooldownUntil,
     cooldownRemaining,
-    walletBalance,
     selectedProvider,
-    providerOptions,
+    walletBalance,
     prepareMutation,
     minIntervalSeconds,
     runMonetagFlow,
     requiredDuration,
-    refresh,
-    refetchWallet,
-    refetchMetrics,
     stopMonetagWatcher,
     runImaAd,
     waitForWalletUpdate,
+    refresh,
+    refetchWallet,
+    refetchMetrics,
   ]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold">Xem quáº£ng cÃ¡o nháº­n thÆ°á»Ÿng</h1>
+        <h1 className="text-3xl font-bold">Xem quảng cáo nhận thưởng</h1>
         <p className="text-muted-foreground">
-          Xem quáº£ng cÃ¡o 30 giÃ¢y Ä‘á»ƒ nháº­n 5 xu. Pháº§n thÆ°á»Ÿng sáº½ Ä‘Æ°á»£c cá»™ng khi há»‡ thá»‘ng xÃ¡c minh thÃ nh cÃ´ng.
+          Xem đủ {requiredDuration}s để nhận {policy?.rewardPerView ?? 5} xu.
+          Phần thưởng chỉ cộng sau khi máy chủ xác minh.
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-        <Card className="glass-card">
+      <div className="grid gap-6 w-full">
+        <Card className="glass-card w-full">
           <CardHeader>
-            <CardTitle>Nháº­n +5 xu</CardTitle>
+            <CardTitle>Nhận +{policy?.rewardPerView ?? 5} xu</CardTitle>
             <CardDescription>
-              Má»—i lÆ°á»£t xem há»£p lá»‡ sáº½ Ä‘Æ°á»£c cá»™ng xu sau khi xÃ¡c minh.
+              Mỗi lượt hợp lệ sẽ được cộng xu sau khi xác minh.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 rounded-lg border border-border/40 px-3 py-2">
-                <span className="text-sm text-muted-foreground">Sá»‘ dÆ° hiá»‡n táº¡i</span>
+                <span className="text-sm text-muted-foreground">
+                  Số dư hiện tại
+                </span>
                 <Badge variant="secondary" className="text-base font-semibold">
                   {walletBalance} xu
                 </Badge>
               </div>
               <div className="flex items-center gap-2 rounded-lg border border-border/40 px-3 py-2">
-                <span className="text-sm text-muted-foreground">ThÆ°á»Ÿng má»—i lÆ°á»£t</span>
+                <span className="text-sm text-muted-foreground">
+                  Thưởng mỗi lượt
+                </span>
                 <Badge variant="outline">{policy?.rewardPerView ?? 5} xu</Badge>
               </div>
             </div>
 
-            {providerOptions.length > 1 && (
+            {/* FIX: Luôn hiển thị selector, dù chỉ có 1 provider */}
+            {providerOptions.length >= 1 && (
               <div className="space-y-2">
-                <p className="text-sm font-medium">Chá»n nhÃ  cung cáº¥p quáº£ng cÃ¡o</p>
+                <p className="text-sm font-medium">Chọn mạng quảng cáo</p>
                 <RadioGroup
                   value={selectedProvider}
                   onValueChange={(value) => setSelectedProvider(value)}
@@ -838,7 +833,9 @@ const Earn = () => {
                       <div
                         key={value}
                         className={`flex items-center gap-2 rounded-md border border-border/40 px-3 py-2 transition ring-offset-background ${
-                          selectedProvider === value ? "ring-1 ring-primary" : ""
+                          selectedProvider === value
+                            ? "ring-1 ring-primary"
+                            : ""
                         }`}
                       >
                         <RadioGroupItem id={id} value={value} />
@@ -848,8 +845,8 @@ const Earn = () => {
                           </Label>
                           <span className="text-xs text-muted-foreground">
                             {value === "monetag"
-                              ? "Bá»™ Ä‘áº¿m phÃ­a client vÃ  vÃ© xÃ¡c minh"
-                              : "Google IMA vÃ  xÃ¡c minh phÃ­a mÃ¡y chá»§"}
+                              ? "Đếm thời gian client + vé server"
+                              : "Google IMA + xác minh server"}
                           </span>
                           {value === "monetag" && cfg?.zoneId && (
                             <span className="text-xs text-muted-foreground">
@@ -878,24 +875,25 @@ const Earn = () => {
               >
                 {prepareMutation.isLoading || status === "loading" ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Äang chuáº©n bá»‹ quáº£ng cÃ¡o
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang chuẩn
+                    bị quảng cáo
                   </>
                 ) : status === "playing" ? (
                   <>
-                    <Play className="mr-2 h-4 w-4" />
-                    Quáº£ng cÃ¡o Ä‘ang cháº¡y
+                    <Play className="mr-2 h-4 w-4" /> Quảng cáo đang chạy
                   </>
                 ) : (
                   <>
-                    <Play className="mr-2 h-4 w-4" />
-                    Xem quáº£ng cÃ¡o (+{policy?.rewardPerView ?? 5} xu)
+                    <Play className="mr-2 h-4 w-4" /> Xem quảng cáo (+
+                    {policy?.rewardPerView ?? 5} xu)
                   </>
                 )}
               </Button>
+
               {cooldownUntil && cooldownUntil > Date.now() && (
                 <div className="text-sm text-muted-foreground">
-                  Vui lÃ²ng Ä‘á»£i {formatSeconds(cooldownRemaining)} trÆ°á»›c khi xem quáº£ng cÃ¡o tiáº¿p theo.
+                  Vui lòng đợi {formatSeconds(cooldownRemaining)} trước lượt
+                  tiếp theo.
                 </div>
               )}
             </div>
@@ -911,16 +909,17 @@ const Earn = () => {
                 )}
                 <div>
                   <p className="text-sm font-semibold">
-                    {status === "idle" && "Sáºµn sÃ ng nháº­n thÆ°á»Ÿng"}
-                    {status === "preparing" && "Äang chuáº©n bá»‹ quáº£ng cÃ¡o..."}
-                    {status === "loading" && "Äang táº£i quáº£ng cÃ¡o..."}
-                    {status === "playing" && "Quáº£ng cÃ¡o Ä‘ang phÃ¡t, vui lÃ²ng xem háº¿t Ä‘á»ƒ nháº­n thÆ°á»Ÿng."}
-                    {status === "verifying" && "Äang chá» xÃ¡c minh pháº§n thÆ°á»Ÿng..."}
-                    {status === "success" && "HoÃ n táº¥t"}
-                    {status === "error" && "KhÃ´ng thá»ƒ hoÃ n thÃ nh lÆ°á»£t xem"}
+                    {status === "idle" && "Sẵn sàng nhận thưởng"}
+                    {status === "preparing" && "Đang chuẩn bị quảng cáo..."}
+                    {status === "loading" && "Đang tải quảng cáo..."}
+                    {status === "playing" &&
+                      "Quảng cáo đang phát, vui lòng xem hết để nhận thưởng."}
+                    {status === "verifying" && "Đang xác minh phần thưởng..."}
+                    {status === "success" && "Hoàn tất"}
+                    {status === "error" && "Không thể hoàn thành lượt xem"}
                   </p>
                   {message && (
-                    <p className="mt-1 text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground mt-1">
                       {message}
                     </p>
                   )}
@@ -933,11 +932,12 @@ const Earn = () => {
                 <Progress value={monetagProgress} />
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>
-                    {Math.min(monetagElapsed, requiredDuration)}s / {requiredDuration}s
+                    {Math.min(monetagElapsed, requiredDuration)}s /{" "}
+                    {requiredDuration}s
                   </span>
                   {monetagPaused && (
                     <span className="font-medium text-amber-500">
-                      Giá»¯ tab nÃ y hiá»ƒn thá»‹
+                      Giữ tab này ở trạng thái hiển thị
                     </span>
                   )}
                 </div>
@@ -975,37 +975,40 @@ const Earn = () => {
 
         <Card className="glass-card h-fit">
           <CardHeader>
-            <CardTitle>Quota &amp; ChÃ­nh sÃ¡ch</CardTitle>
-            <CardDescription>CÃ i Ä‘áº·t pháº§n thÆ°á»Ÿng hiá»‡n táº¡i</CardDescription>
+            <CardTitle>Quota & Chính sách</CardTitle>
+            <CardDescription>Cài đặt thưởng hiện tại</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             {isLoadingPolicy && (
               <p className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Äang táº£i chÃ­nh sÃ¡ch...
+                <Loader2 className="h-4 w-4 animate-spin" /> Đang tải chính
+                sách...
               </p>
             )}
             {policy && (
               <ul className="space-y-2">
                 <li>
-                  <span className="font-medium">ThÆ°á»Ÿng má»—i lÆ°á»£t:</span>{" "}
-                  {policy.rewardPerView} xu (xem tá»‘i thiá»ƒu {policy.requiredDuration}s)
+                  <span className="font-medium">Thưởng mỗi lượt:</span>{" "}
+                  {policy.rewardPerView} xu, xem tối thiểu{" "}
+                  {policy.requiredDuration}s
                 </li>
                 <li>
-                  <span className="font-medium">Thá»i gian chá»:</span>{" "}
-                  {formatSeconds(policy.minInterval)} giá»¯a cÃ¡c lÆ°á»£t trÃªn cÃ¹ng thiáº¿t bá»‹.
+                  <span className="font-medium">Thời gian chờ:</span>{" "}
+                  {formatSeconds(policy.minInterval)} giữa các lượt trên cùng
+                  thiết bị
                 </li>
                 <li>
-                  <span className="font-medium">Giá»›i háº¡n theo ngÆ°á»i dÃ¹ng:</span>{" "}
-                  {policy.effectivePerDay}/{policy.perDay} lÆ°á»£t má»—i ngÃ y.
+                  <span className="font-medium">Giới hạn theo người dùng:</span>{" "}
+                  {policy.effectivePerDay}/{policy.perDay} lượt mỗi ngày
                 </li>
                 <li>
-                  <span className="font-medium">Giá»›i háº¡n theo thiáº¿t bá»‹:</span>{" "}
-                  {policy.perDevice} lÆ°á»£t má»—i ngÃ y.
+                  <span className="font-medium">Giới hạn theo thiết bị:</span>{" "}
+                  {policy.perDevice} lượt mỗi ngày
                 </li>
                 {policy.priceFloor !== null && (
                   <li>
-                    <span className="font-medium">GiÃ¡ sÃ n hiá»‡n táº¡i:</span> CPM â‰¥ {policy.priceFloor}
+                    <span className="font-medium">Giá sàn hiện tại:</span> CPM{" "}
+                    {policy.priceFloor}
                   </li>
                 )}
               </ul>
@@ -1013,39 +1016,16 @@ const Earn = () => {
             {!isLoadingPolicy && !policy && (
               <div className="flex items-center gap-2 text-destructive">
                 <AlertCircle className="h-4 w-4" />
-                KhÃ´ng thá»ƒ táº£i cáº¥u hÃ¬nh thÆ°á»Ÿng.{" "}
+                Không tải được cấu hình thưởng.{" "}
                 <button
                   type="button"
                   onClick={() => refetchPolicy()}
                   className="underline"
                 >
-                  Thá»­ láº¡i
+                  Thử lại
                 </button>
               </div>
             )}
-
-            <div className="border-t border-border/40 pt-4 space-y-1">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Thá»‘ng kÃª há»‡ thá»‘ng
-              </p>
-              <p>
-                Tá»· lá»‡ láº¥p Ä‘áº§y:{" "}
-                {metricsSnapshot.prepareOk
-                  ? `${Math.round((metricsSnapshot.ssvSuccess / metricsSnapshot.prepareOk) * 100)}%`
-                  : "--"}
-              </p>
-              <p>
-                XÃ¡c minh SSV thÃ nh cÃ´ng: {metricsSnapshot.ssvSuccess} /{" "}
-                {metricsSnapshot.ssvSuccess +
-                  metricsSnapshot.ssvInvalid +
-                  metricsSnapshot.ssvError +
-                  metricsSnapshot.ssvDuplicate}
-              </p>
-              <p>Tá»•ng xu Ä‘Ã£ thÆ°á»Ÿng: {metricsSnapshot.rewardCoins}</p>
-              <p>
-                Tá»· lá»‡ lá»—i: {(metricsSnapshot.failureRatio * 100).toFixed(1)}%
-              </p>
-            </div>
           </CardContent>
         </Card>
       </div>

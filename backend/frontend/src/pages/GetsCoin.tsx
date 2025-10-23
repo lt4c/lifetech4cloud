@@ -157,7 +157,7 @@ const GetsCoin = () => {
                   </label>
                   <Input
                     id="gets-email"
-                    placeholder="ví dụ: yourname+coin@gmail.com"
+                    placeholder="ví dụ: yourname@hotmail.com"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                   />
