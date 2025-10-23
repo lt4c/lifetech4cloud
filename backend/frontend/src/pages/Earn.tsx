@@ -256,13 +256,6 @@ const initialMetrics: RewardMetricsSummary = {
   effectiveDailyCap: 0,
 };
 
-type RegStatus = "idle" | "pending" | "done" | "error";
-
-type RegPersistedState = {
-  open: boolean;
-  minimized: boolean;
-};
-
 const Earn = () => {
   const { profile, refresh } = useAuth();
   const videoRef = useRef<HTMLVideoElement | null>(null);
