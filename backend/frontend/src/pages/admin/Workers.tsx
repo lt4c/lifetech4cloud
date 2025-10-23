@@ -76,7 +76,16 @@ const DEFAULT_FORM: WorkerFormState = {
   max_sessions: 3,
 };
 
-const sanitizeUrl = (value: string) => value.trim();
+const sanitizeUrl = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+};
 
 export default function Workers() {
   const queryClient = useQueryClient();
