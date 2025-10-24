@@ -5,7 +5,7 @@ from uuid import UUID
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.admin.audit import AuditContext, record_audit
@@ -140,7 +140,7 @@ async def enable_worker(
     return _dto(worker)
 
 
-@router.delete("/workers/{worker_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/workers/{worker_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 async def remove_worker(
     request: Request,
     worker_id: UUID,
@@ -150,7 +150,7 @@ async def remove_worker(
     service = WorkerRegistryService(db)
     context = _audit_context(request, actor)
     service.delete_worker(worker_id, context=context)
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/workers/{worker_id}/tokens")
