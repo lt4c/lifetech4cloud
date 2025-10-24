@@ -38,6 +38,8 @@ DEFAULT_PERMISSIONS: Dict[str, str] = {
     "sys:db:read": "Read database diagnostics",
     "settings:ads:read": "Read ads settings",
     "settings:ads:update": "Update ads settings",
+    "settings:version:read": "Read platform version info",
+    "settings:version:update": "Update platform version info",
     "kyaro:prompt:read": "Read Kyaro system prompt",
     "kyaro:prompt:update": "Update Kyaro system prompt",
     "support:threads:read": "View support inbox",

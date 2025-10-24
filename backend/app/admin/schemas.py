@@ -307,6 +307,22 @@ class KyaroPromptUpdateRequest(BaseModel):
     prompt: str = Field(min_length=1)
 
 
+VersionChannel = Literal["dev", "devStable", "stable", "devBack"]
+
+
+class VersionInfoResponse(BaseModel):
+    channel: VersionChannel
+    version: str
+    description: str
+    updated_at: datetime | None = None
+    updated_by: UUID | None = None
+
+
+class VersionInfoUpdateRequest(BaseModel):
+    channel: VersionChannel
+    version: str = Field(min_length=1, max_length=50)
+
+
 class SupportAttachmentInput(BaseModel):
     url: str = Field(min_length=1, max_length=500)
     label: str | None = Field(default=None, max_length=120)

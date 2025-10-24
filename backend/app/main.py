@@ -37,6 +37,7 @@ from app.api import announcements as announcements_router
 from app.api import restore_admin as restore_admin_router
 from app.api import support as support_router
 from app.api import giftcodes as giftcodes_router
+from app.api import version as version_router
 from app.api import vps as vps_router
 from app.services.ads import AdsNonceManager, AdsService
 from app.services.event_bus import SessionEventBus
@@ -237,6 +238,7 @@ app.include_router(ads_router.router)
 app.include_router(support_router.router)
 app.include_router(announcements_router.router)
 app.include_router(giftcodes_router.router)
+app.include_router(version_router.router)
 
 
 @app.options("/{path:path}", include_in_schema=False)

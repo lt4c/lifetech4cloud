@@ -38,6 +38,16 @@ export interface VpsProduct {
   workers?: WorkerInfo[];
 }
 
+export type VersionChannel = "dev" | "devStable" | "stable" | "devBack";
+
+export interface VersionInfo {
+  channel: VersionChannel;
+  version: string;
+  description: string;
+  updated_at?: string | null;
+  updated_by?: string | null;
+}
+
 export interface GiftCode {
   id: string;
   title: string;

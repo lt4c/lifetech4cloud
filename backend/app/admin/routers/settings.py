@@ -13,18 +13,24 @@ from app.admin.schemas import (
     AdsSettingsUpdateRequest,
     KyaroPromptResponse,
     KyaroPromptUpdateRequest,
+    VersionInfoResponse,
+    VersionInfoUpdateRequest,
 )
 from app.deps import get_db
 from app.models import User
 from app.services.settings_store import SettingsStore
+from app.services.version_info import (
+    DEFAULT_VERSION_ENTRY,
+    PLATFORM_VERSION_KEY,
+    VERSION_DESCRIPTIONS,
+    resolve_version_entry,
+)
 
 
 router = APIRouter(tags=["admin-settings"])
 
 ADS_KEY = "ads.enabled"
 KYARO_PROMPT_KEY = "kyaro.system_prompt"
-
-
 def _audit_context(request: Request, actor: User) -> AuditContext:
     client_host = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
@@ -103,5 +109,52 @@ async def update_kyaro_prompt(
         prompt=payload.prompt,
         version=version,
         updated_at=now,
+        updated_by=actor.id,
+    )
+
+
+@router.get("/settings/version", response_model=VersionInfoResponse)
+async def get_platform_version(
+    _: User = Depends(require_perm("settings:version:read")),
+    db: Session = Depends(get_db),
+) -> VersionInfoResponse:
+    store = SettingsStore(db)
+    value = store.get(
+        PLATFORM_VERSION_KEY,
+        default=DEFAULT_VERSION_ENTRY,
+    )
+    channel, version, description, updated_at, updated_by = resolve_version_entry(value)
+    return VersionInfoResponse(
+        channel=channel, version=version, description=description, updated_at=updated_at, updated_by=updated_by
+    )
+
+
+@router.patch("/settings/version", response_model=VersionInfoResponse)
+async def update_platform_version(
+    request: Request,
+    payload: VersionInfoUpdateRequest,
+    actor: User = Depends(require_perm("settings:version:update")),
+    db: Session = Depends(get_db),
+) -> VersionInfoResponse:
+    channel = payload.channel
+    version = payload.version.strip()
+    description = VERSION_DESCRIPTIONS.get(channel, VERSION_DESCRIPTIONS["dev"])
+
+    store = SettingsStore(db)
+    context = _audit_context(request, actor)
+    now = datetime.now(timezone.utc).isoformat()
+    value = {
+        "channel": channel,
+        "version": version,
+        "updated_at": now,
+        "updated_by": str(actor.id),
+    }
+    store.set(PLATFORM_VERSION_KEY, value, context=context)
+
+    return VersionInfoResponse(
+        channel=channel,
+        version=version,
+        description=description,
+        updated_at=datetime.fromisoformat(now),
         updated_by=actor.id,
     )

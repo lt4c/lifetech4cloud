@@ -26,6 +26,8 @@ import type {
   WalletBalance,
   RewardMetricsSummary,
   GiftCode,
+  VersionInfo,
+  VersionChannel,
 } from "./types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(
@@ -1182,6 +1184,26 @@ export const updateKyaroPrompt = async (
 ): Promise<KyaroPrompt> => {
   const body = JSON.stringify({ prompt });
   return apiFetch<KyaroPrompt>("/api/v1/admin/kyaro/prompt", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+};
+
+export const fetchPlatformVersion = async (): Promise<VersionInfo> => {
+  return apiFetch<VersionInfo>("/version");
+};
+
+export const fetchAdminVersionInfo = async (): Promise<VersionInfo> => {
+  return apiFetch<VersionInfo>("/api/v1/admin/settings/version");
+};
+
+export const updateAdminVersionInfo = async (payload: {
+  channel: VersionChannel;
+  version: string;
+}): Promise<VersionInfo> => {
+  const body = JSON.stringify(payload);
+  return apiFetch<VersionInfo>("/api/v1/admin/settings/version", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body,

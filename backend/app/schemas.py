@@ -23,8 +23,8 @@ class AssetUploadResponse(BaseModel):
 
 
 class HealthStatus(BaseModel):
-    ok: bool
-    database: bool
+   ok: bool
+   database: bool
 
 
 class UserProfileUpdate(BaseModel):
@@ -33,3 +33,9 @@ class UserProfileUpdate(BaseModel):
 
     class Config:
         extra = "forbid"
+
+
+class PlatformVersionResponse(BaseModel):
+    channel: str
+    version: str
+    description: str
