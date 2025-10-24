@@ -25,6 +25,8 @@ DEFAULT_PERMISSIONS: Dict[str, str] = {
     "worker:register": "Register new workers",
     "worker:update": "Update worker configuration",
     "worker:disable": "Disable worker",
+    "worker:restart": "Restart worker sessions",
+    "worker:delete": "Delete worker",
     "vps_product:create": "Create VPS products",
     "vps_product:read": "Read VPS products",
     "vps_product:update": "Update VPS products",

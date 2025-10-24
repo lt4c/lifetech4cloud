@@ -15,6 +15,8 @@ import {
   Zap,
   Plus,
   KeyRound,
+  RotateCcw,
+  Trash2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -34,11 +36,13 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "@/components/ui/sonner";
 import {
   checkWorkerHealth,
+  deleteWorker,
   disableWorker,
   fetchWorkerDetail,
   fetchWorkers,
   ApiError,
   requestWorkerToken,
+  restartWorker,
   registerWorker,
   updateWorker,
 } from "@/lib/api-client";
@@ -97,6 +101,8 @@ export default function Workers() {
   const [healthStatus, setHealthStatus] = useState<WorkerHealthStatus | null>(null);
   const [tokenWorker, setTokenWorker] = useState<WorkerInfo | null>(null);
   const [tokenForm, setTokenForm] = useState({ email: "", password: "" });
+  const [restartTarget, setRestartTarget] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const { data: workers = [], isLoading } = useQuery<WorkerInfo[]>({
     queryKey: ["admin-workers"],
@@ -175,6 +181,66 @@ export default function Workers() {
     },
   });
 
+  const restartMutation = useMutation({
+    mutationFn: restartWorker,
+    onMutate: (id: string) => {
+      setRestartTarget(id);
+    },
+    onSuccess: (data) => {
+      const terminated = data.terminated_sessions;
+      const description =
+        terminated > 0
+          ? `Đã hủy ${terminated} phiên đang chạy.`
+          : "Không có phiên nào cần hủy.";
+      toast("Đã khởi động lại worker.", { description });
+      queryClient.invalidateQueries({ queryKey: ["admin-workers"] });
+      if (detailWorkerId) {
+        queryClient.invalidateQueries({ queryKey: ["admin-worker", detailWorkerId] });
+      }
+    },
+    onError: (error: unknown) => {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Khởi động lại worker thất bại.";
+      toast(message);
+    },
+    onSettled: () => {
+      setRestartTarget(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteWorker,
+    onMutate: (id: string) => {
+      setDeleteTarget(id);
+    },
+    onSuccess: (_, workerId) => {
+      toast("Đã xóa worker.");
+      queryClient.invalidateQueries({ queryKey: ["admin-workers"] });
+      queryClient.removeQueries({ queryKey: ["admin-worker", workerId] });
+      if (detailWorkerId === workerId) {
+        setDetailWorkerId(null);
+      }
+      if (editWorker?.id === workerId) {
+        setEditWorker(null);
+      }
+      if (tokenWorker?.id === workerId) {
+        setTokenWorker(null);
+        setTokenForm({ email: "", password: "" });
+      }
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Xóa worker thất bại.";
+      toast(message);
+    },
+    onSettled: () => {
+      setDeleteTarget(null);
+    },
+  });
+
   const healthMutation = useMutation({
     mutationFn: checkWorkerHealth,
     onSuccess: (data) => {
@@ -244,6 +310,22 @@ export default function Workers() {
       disableMutation.mutate(worker.id);
     } else {
       updateMutation.mutate({ id: worker.id, payload: { status: "active" } });
+    }
+  };
+
+  const handleRestart = (worker: WorkerInfo) => {
+    if (worker.active_sessions === 0 || window.confirm("Bạn có chắc muốn hủy toàn bộ phiên đang chạy của worker này?")) {
+      restartMutation.mutate(worker.id);
+    }
+  };
+
+  const handleDelete = (worker: WorkerInfo) => {
+    if (worker.active_sessions > 0) {
+      toast("Không thể xóa khi worker còn phiên đang chạy. Vui lòng khởi động lại trước.");
+      return;
+    }
+    if (window.confirm("Xóa worker này? Hành động không thể hoàn tác.")) {
+      deleteMutation.mutate(worker.id);
     }
   };
 
@@ -383,7 +465,12 @@ export default function Workers() {
                       variant="outline"
                       className="gap-2"
                       onClick={() => handleToggleStatus(worker)}
-                      disabled={disableMutation.isLoading || updateMutation.isLoading}
+                      disabled={
+                        disableMutation.isLoading ||
+                        updateMutation.isLoading ||
+                        restartMutation.isLoading ||
+                        deleteMutation.isLoading
+                      }
                     >
                       {worker.status === "active" ? (
                         <>
@@ -396,6 +483,38 @@ export default function Workers() {
                           Bật (Enable)
                         </>
                       )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => handleRestart(worker)}
+                      disabled={restartMutation.isLoading || deleteMutation.isLoading}
+                    >
+                      {restartMutation.isLoading && restartTarget === worker.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RotateCcw className="w-4 h-4" />
+                      )}
+                      Khởi động lại
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="gap-2"
+                      onClick={() => handleDelete(worker)}
+                      disabled={
+                        worker.active_sessions > 0 ||
+                        deleteMutation.isLoading ||
+                        restartMutation.isLoading
+                      }
+                    >
+                      {deleteMutation.isLoading && deleteTarget === worker.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                      Xóa
                     </Button>
                   </div>
                 </CardContent>

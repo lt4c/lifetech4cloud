@@ -8,13 +8,14 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.admin.audit import AuditContext
+from app.admin.audit import AuditContext, record_audit
 from app.admin.deps import require_perm
 from app.admin.schemas import (
     WorkerDetail,
     WorkerEndpoints,
     WorkerHealthResponse,
     WorkerListItem,
+    WorkerRestartResponse,
     WorkerTokenRequest,
     WorkerRegisterRequest,
     WorkerUpdateRequest,
@@ -23,6 +24,7 @@ from app.deps import get_db
 from app.models import User, Worker
 from app.services.worker_registry import WorkerRegistryService
 from app.services.worker_client import WorkerClient
+from app.services.vps import VpsService
 
 
 router = APIRouter(tags=["admin-workers"])
@@ -36,6 +38,9 @@ def _audit_context(request: Request, actor: User) -> AuditContext:
 
 def _dto(worker: Worker) -> WorkerListItem:
     active_sessions = getattr(worker, "_active_sessions", 0)
+    actions = ["detail", "health", "edit"]
+    actions.append("disable" if worker.status == "active" else "enable")
+    actions.extend(["restart", "delete"])
     return WorkerListItem(
         id=worker.id,
         name=worker.name,
@@ -45,7 +50,7 @@ def _dto(worker: Worker) -> WorkerListItem:
         active_sessions=active_sessions,
         created_at=worker.created_at,
         updated_at=worker.updated_at,
-        actions=["detail", "health", "edit", "disable" if worker.status == "active" else "enable"],
+        actions=actions,
     )
 
 
@@ -135,6 +140,19 @@ async def enable_worker(
     return _dto(worker)
 
 
+@router.delete("/workers/{worker_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_worker(
+    request: Request,
+    worker_id: UUID,
+    actor: User = Depends(require_perm("worker:delete")),
+    db: Session = Depends(get_db),
+) -> None:
+    service = WorkerRegistryService(db)
+    context = _audit_context(request, actor)
+    service.delete_worker(worker_id, context=context)
+    return None
+
+
 @router.post("/workers/{worker_id}/tokens")
 async def request_worker_token(
     worker_id: UUID,
@@ -212,3 +230,47 @@ async def check_worker_health(
         latency_ms=latency_ms,
         payload=payload,
     )
+
+
+@router.post("/workers/{worker_id}/restart", response_model=WorkerRestartResponse)
+async def restart_worker_sessions(
+    request: Request,
+    worker_id: UUID,
+    actor: User = Depends(require_perm("worker:restart")),
+    db: Session = Depends(get_db),
+) -> WorkerRestartResponse:
+    service = WorkerRegistryService(db)
+    context = _audit_context(request, actor)
+    worker = service.get_worker(worker_id)
+    active_sessions = service.list_active_sessions(worker_id)
+    terminated = 0
+
+    if active_sessions:
+        vps_service = VpsService(db)
+        client = WorkerClient()
+        try:
+            for session in active_sessions:
+                await vps_service.stop_session(session, client)
+                terminated += 1
+        finally:
+            await client.aclose()
+
+    # Touch worker to record restart timestamp.
+    worker_for_update = service.get_worker(worker_id)
+    worker_for_update.updated_at = datetime.now(timezone.utc)
+    db.add(worker_for_update)
+    db.commit()
+
+    worker_after = service.get_worker(worker_id)
+    after_active = getattr(worker_after, "_active_sessions", 0)
+    record_audit(
+        db,
+        context=context,
+        action="worker.restart",
+        target_type="worker",
+        target_id=str(worker_after.id),
+        before={"active_sessions": len(active_sessions)},
+        after={"active_sessions": after_active, "terminated_sessions": terminated},
+    )
+    db.commit()
+    return WorkerRestartResponse(worker=_dto(worker_after), terminated_sessions=terminated)

@@ -172,3 +172,45 @@ class WorkerRegistryService:
         )
         self.db.commit()
         return worker
+
+    def list_active_sessions(self, worker_id: UUID) -> list[VpsSession]:
+        stmt = (
+            select(VpsSession)
+            .where(VpsSession.worker_id == worker_id)
+            .where(VpsSession.status.in_(ACTIVE_STATUSES))
+        )
+        return list(self.db.scalars(stmt))
+
+    def delete_worker(self, worker_id: UUID, *, context: AuditContext) -> None:
+        worker = self.db.get(Worker, worker_id)
+        if not worker:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found.")
+
+        counts = self._active_session_counts([worker.id])
+        active_sessions = counts.get(worker.id, 0)
+        if active_sessions:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Worker still has active sessions.",
+            )
+
+        before = {
+            "name": worker.name,
+            "base_url": worker.base_url,
+            "status": worker.status,
+            "max_sessions": worker.max_sessions,
+        }
+        worker_id_str = str(worker.id)
+        self.db.delete(worker)
+        self.db.commit()
+
+        record_audit(
+            self.db,
+            context=context,
+            action="worker.delete",
+            target_type="worker",
+            target_id=worker_id_str,
+            before=before,
+            after=None,
+        )
+        self.db.commit()

@@ -233,6 +233,11 @@ export interface WorkerHealthStatus {
   payload?: Record<string, unknown> | null;
 }
 
+export interface WorkerRestartResponse {
+  worker: WorkerInfo;
+  terminated_sessions: number;
+}
+
 export interface AdsSettings {
   enabled: boolean;
 }

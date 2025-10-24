@@ -21,6 +21,7 @@ import type {
   WorkerDetail,
   WorkerHealthStatus,
   WorkerInfo,
+  WorkerRestartResponse,
   RewardPolicy,
   PrepareAdResponse,
   WalletBalance,
@@ -906,6 +907,18 @@ export const disableWorker = async (id: string): Promise<WorkerInfo> => {
 export const enableWorker = async (id: string): Promise<WorkerInfo> => {
   return apiFetch<WorkerInfo>(`/api/v1/admin/workers/${id}/enable`, {
     method: "POST",
+  });
+};
+
+export const restartWorker = async (id: string): Promise<WorkerRestartResponse> => {
+  return apiFetch<WorkerRestartResponse>(`/api/v1/admin/workers/${id}/restart`, {
+    method: "POST",
+  });
+};
+
+export const deleteWorker = async (id: string): Promise<void> => {
+  await apiFetch<void>(`/api/v1/admin/workers/${id}`, {
+    method: "DELETE",
   });
 };
 

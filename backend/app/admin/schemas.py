@@ -229,6 +229,11 @@ class WorkerHealthResponse(BaseModel):
     latency_ms: float | None = None
     payload: dict | None = None
 
+
+class WorkerRestartResponse(BaseModel):
+    worker: WorkerListItem
+    terminated_sessions: int
+
 class VpsProductCreateRequest(BaseModel):
     name: str
     description: str | None = None
