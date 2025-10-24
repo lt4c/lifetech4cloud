@@ -13,6 +13,7 @@ import {
   Package,
   Gift,
   Coins,
+  Ticket,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
@@ -33,6 +34,7 @@ const menuItems = [
   { title: "VPS", url: "/vps", icon: Server },
   { title: "Earn Coins", url: "/earn", icon: Gift },
   { title: "Gets Coin", url: "/gets-coin", icon: Coins },
+  { title: "Giftcode", url: "/giftcode", icon: Ticket },
   { title: "Support", url: "/support", icon: MessageSquare },
 ];
 

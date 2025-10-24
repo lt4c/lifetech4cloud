@@ -16,6 +16,7 @@ import GetsCoin from "@/pages/GetsCoin";
 import Announcements from "@/pages/Announcements";
 import AnnouncementDetail from "@/pages/AnnouncementDetail";
 import Support from "@/pages/Support";
+import Giftcode from "@/pages/Giftcode";
 import Users from "@/pages/admin/Users";
 import Roles from "@/pages/admin/Roles";
 import Workers from "@/pages/admin/Workers";
@@ -144,6 +145,14 @@ const AppRoutes = () => (
       element={
         <ProtectedRoute>
           <Support />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/giftcode"
+      element={
+        <ProtectedRoute>
+          <Giftcode />
         </ProtectedRoute>
       }
     />

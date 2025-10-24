@@ -9,7 +9,6 @@ import {
   Link as LinkIcon,
   File as FileIcon,
   Search,
-  Gift,
 } from "lucide-react";
 import {
   Card,
@@ -34,8 +33,6 @@ import {
   fetchAdminSupportThreads,
   fetchSupportThreads,
   postSupportThreadMessage,
-  redeemGiftCode,
-  ApiError,
 } from "@/lib/api-client";
 import type {
   SupportAttachment,
@@ -368,14 +365,6 @@ const Support = () => {
   >("open");
   const [composerTab, setComposerTab] = useState<TabKey>("reply");
 
-  const [giftCodeInput, setGiftCodeInput] = useState("");
-  const [giftMessage, setGiftMessage] = useState<string | null>(null);
-  const [giftResult, setGiftResult] = useState<{
-    title: string;
-    added: number;
-    balance: number;
-    remaining: number;
-  } | null>(null);
   // Compose state
   const [replyText, setReplyText] = useState("");
   const [replyAttachments, setReplyAttachments] = useState<AttachmentDraft[]>(
@@ -622,49 +611,6 @@ const Support = () => {
   }, [hasAdminAccess, selectedThreadId]);
 
   /* Mutations */
-  const redeemMutation = useMutation({
-    mutationFn: redeemGiftCode,
-    onSuccess: (data) => {
-      setGiftResult({
-        title: data.gift_title,
-        added: data.added,
-        balance: data.balance,
-        remaining: data.remaining,
-      });
-      setGiftMessage(
-        `Đổi mã thành công ${data.gift_title}. Bạn nhận +${data.added.toLocaleString()} xu, số dư hiện tại: ${data.balance.toLocaleString()} xu.`,
-      );
-      setGiftCodeInput("");
-      queryClient.invalidateQueries({ queryKey: ["wallet-balance"] });
-      queryClient.invalidateQueries({ queryKey: ["me"] });
-    },
-    onError: (error) => {
-      let detail = "Không thể đổi mã. Vui lòng kiểm tra và thử lại.";
-      if (error instanceof ApiError) {
-        const raw = (error.data as { detail?: string } | undefined)?.detail;
-        if (typeof raw === "string") {
-          detail = raw;
-        }
-      } else if (error instanceof Error) {
-        detail = error.message;
-      }
-      setGiftResult(null);
-      setGiftMessage(detail);
-      toast(detail);
-    },
-  });
-
-  const handleRedeem = () => {
-    const trimmed = giftCodeInput.trim().toUpperCase();
-    if (!trimmed) {
-      setGiftResult(null);
-      setGiftMessage("Vui lòng nhập mã quà hợp lệ.");
-      return;
-    }
-    setGiftMessage(null);
-    redeemMutation.mutate({ code: trimmed });
-  };
-
   const upsertUserThread = useCallback(
     (thread: SupportThread) => {
       queryClient.setQueryData(
@@ -799,53 +745,6 @@ const Support = () => {
    * ============== */
   return (
     <div className="space-y-6">
-      <Card className="glass-card">
-        <CardHeader>
-          <CardTitle>Giftcode</CardTitle>
-          <CardDescription>
-            Nh?p m? qu? ?? nh?n xu th??ng m?t l?n duy nh?t cho m?i t?i kho?n.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Input
-              placeholder="Nh?p m? qu?..."
-              value={giftCodeInput}
-              onChange={(event) => setGiftCodeInput(event.target.value)}
-              className="sm:flex-1"
-            />
-            <Button
-              onClick={handleRedeem}
-              disabled={redeemMutation.isLoading}
-              className="gap-2"
-            >
-              {redeemMutation.isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Gift className="h-4 w-4" />
-              )}
-              Đổi mã
-            </Button>
-          </div>
-          {giftResult && (
-            <p className="text-xs text-muted-foreground">
-              Mã {giftResult.title} còn lại{" "}
-              {giftResult.remaining.toLocaleString()} lượt.
-            </p>
-          )}
-          {giftMessage && (
-            <p
-              className={cn(
-                "text-sm",
-                giftResult ? "text-emerald-600" : "text-destructive",
-              )}
-            >
-              {giftMessage}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
       <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
         {/* LEFT: Ticket list */}
         <Card className="glass-card">
@@ -1144,3 +1043,4 @@ const Support = () => {
 };
 
 export default Support;
+
