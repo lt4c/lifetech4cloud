@@ -37,7 +37,7 @@ const Giftcode = () => {
         remaining: data.remaining,
       });
       setGiftMessage(
-        `Doi ma thanh cong ${data.gift_title}. Ban nhan +${data.added.toLocaleString()} xu, so du hien tai: ${data.balance.toLocaleString()} xu.`,
+        `Đổi mã thành công ${data.gift_title}. Bạn nhận được ${data.added.toLocaleString()} xu, số dư hiện tại: ${data.balance.toLocaleString()} xu.`,
       );
       setGiftCodeInput("");
       queryClient.invalidateQueries({ queryKey: ["wallet-balance"] });
@@ -63,7 +63,7 @@ const Giftcode = () => {
     const trimmed = giftCodeInput.trim().toUpperCase();
     if (!trimmed) {
       setGiftResult(null);
-      setGiftMessage("Vui long nhap ma qua hop le.");
+      setGiftMessage("Vui lòng nhập mã quà hợp lệ.");
       return;
     }
     setGiftMessage(null);
@@ -76,13 +76,13 @@ const Giftcode = () => {
         <CardHeader>
           <CardTitle>Giftcode</CardTitle>
           <CardDescription>
-            Nhap ma qua de nhan xu thuong (moi tai khoan chi doi mot lan).
+            Nhập mã quà tặng để nhận xu vào ví của bạn. <strong>MỖI TÀI KHOẢN CHỈ ĐƯỢC ĐỔI MỘT LẦN!</strong>
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Input
-              placeholder="Nhap ma qua..."
+              placeholder="Nhập mã giftcode"
               value={giftCodeInput}
               onChange={(event) => setGiftCodeInput(event.target.value)}
               className="sm:flex-1"
@@ -97,13 +97,13 @@ const Giftcode = () => {
               ) : (
                 <Gift className="h-4 w-4" />
               )}
-              Doi ma
+              Đổi mã
             </Button>
           </div>
           {giftResult && (
             <p className="text-xs text-muted-foreground">
-              Ma {giftResult.title} con lai{" "}
-              {giftResult.remaining.toLocaleString()} luot.
+              Mã {giftResult.title} còn lại{" "}
+              {giftResult.remaining.toLocaleString()} lượt.
             </p>
           )}
           {giftMessage && (

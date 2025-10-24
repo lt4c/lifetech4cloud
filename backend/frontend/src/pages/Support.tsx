@@ -162,7 +162,7 @@ const AttachmentEditor = ({
           className="grid gap-2 md:grid-cols-[1fr,2fr,auto,auto] md:items-center"
         >
           <Input
-            placeholder="Nh?n"
+            placeholder="Nhập tên tệp đính kèm"
             value={a.label}
             onChange={(e) => update(i, { label: e.target.value })}
           />
@@ -178,12 +178,12 @@ const AttachmentEditor = ({
             }
             className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm"
           >
-            <option value="link">Li?n k?t</option>
-            <option value="image">?nh</option>
-            <option value="file">T?p</option>
+            <option value="link">Liên kết</option>
+            <option value="image">Hình ảnh</option>
+            <option value="file">Tệp</option>
           </select>
           <Button variant="ghost" size="sm" onClick={() => remove(i)}>
-            X?a
+            Xóa
           </Button>
         </div>
       ))}
@@ -194,7 +194,7 @@ const AttachmentEditor = ({
         onClick={() => onChange([...value, { ...defaultAttachment }])}
       >
         <Plus className="w-4 h-4" />
-        Th?m ??nh k?m
+        Thêm tệp đính kèm
       </Button>
     </div>
   );
