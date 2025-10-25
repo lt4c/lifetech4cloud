@@ -134,21 +134,22 @@ class VpsService:
             idempotency_key=key,
         )
 
-        transaction_ctx = self.db.begin_nested() if self.db.in_transaction() else self.db.begin()
         try:
-            with transaction_ctx:
-                self.db.add(session)
-                self.db.flush()
-                wallet_service.adjust_balance(
-                    user,
-                    -product.price_coins,
-                    entry_type="vps.purchase",
-                    ref_id=session.id,
-                    meta={"product_id": str(product.id)},
-                )
+            self.db.add(session)
+            self.db.flush()
+            wallet_service.adjust_balance(
+                user,
+                -product.price_coins,
+                entry_type="vps.purchase",
+                ref_id=session.id,
+                meta={"product_id": str(product.id)},
+            )
+            self.db.commit()
         except HTTPException:
+            self.db.rollback()
             raise
         except Exception as exc:  # pragma: no cover - defensive
+            self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Unable to create VPS session",
@@ -179,8 +180,7 @@ class VpsService:
             # bubble HTTP errors directly to client
             raise
         except Exception as exc:  # pragma: no cover - defensive
-            transaction_ctx = self.db.begin_nested() if self.db.in_transaction() else self.db.begin()
-            with transaction_ctx:
+            try:
                 session.status = "failed"
                 session.updated_at = datetime.now(timezone.utc)
                 wallet_service.adjust_balance(
@@ -191,6 +191,13 @@ class VpsService:
                     meta={"reason": "worker_unreachable"},
                 )
                 self.db.add(session)
+                self.db.commit()
+            except Exception as refund_exc:
+                self.db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Unable to refund VPS purchase",
+                ) from refund_exc
             if self.event_bus:
                 await self.event_bus.publish(
                     session.id,
@@ -217,9 +224,15 @@ class VpsService:
             }
         ]
         session.updated_at = datetime.now(timezone.utc)
-        transaction_ctx = self.db.begin_nested() if self.db.in_transaction() else self.db.begin()
-        with transaction_ctx:
+        try:
             self.db.add(session)
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to update VPS session",
+            ) from exc
         self.db.refresh(session)
 
         if self.event_bus:
