@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Header } from "@/components/Header";
@@ -104,21 +104,47 @@ const GlobalBanner = () => {
     setVisible(false);
   }, [identifier]);
 
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    if (typeof document === "undefined") {
+      return;
+    }
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [visible]);
+
   if (!identifier || !visible) {
     return null;
   }
 
-  return (
-    <Alert className="mb-4 border-primary/40 bg-primary/10 backdrop-blur">
-      <div className="flex items-start justify-between gap-3">
-        <AlertDescription className="whitespace-pre-line text-sm text-foreground">
-          {message}
-        </AlertDescription>
-        <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={handleDismiss}>
-          Đóng
-        </Button>
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 dark:bg-black/60 px-6 backdrop-blur-sm">
+      <div className="glass-card w-full max-w-2xl space-y-6 rounded-3xl border border-primary/40 bg-background/95 p-6 shadow-2xl">
+        <div className="space-y-3">
+          <p className="whitespace-pre-wrap text-base leading-relaxed text-foreground">{message}</p>
+          {data?.updated_at && (
+            <p className="text-xs text-muted-foreground">
+              Cập nhật: {new Date(data.updated_at).toLocaleString()}
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={handleDismiss}>
+            Đã hiểu
+          </Button>
+        </div>
       </div>
-    </Alert>
+    </div>,
+    document.body,
   );
 };
 
