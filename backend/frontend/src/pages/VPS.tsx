@@ -17,6 +17,7 @@ import {
 } from "@/lib/api-client";
 import type { VpsProduct, VpsSession } from "@/lib/types";
 import { toast } from "@/components/ui/sonner";
+import { CloudDownload } from "lucide-react";
 
 type VmVariant = "linux" | "windows";
 
@@ -667,7 +668,7 @@ const SessionCard = ({ session, onStop, isStopping }: SessionCardProps) => {
                   copied={ipCopied}
                   trailing={
                     <Button variant="outline" size="sm" onClick={handleDownloadRdp} className="px-2">
-                      ▶
+                      <CloudDownload />
                     </Button>
                   }
                 />
