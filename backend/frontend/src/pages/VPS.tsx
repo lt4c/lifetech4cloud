@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Server, Plus, Power, RefreshCw, Loader2, ExternalLink, Terminal, StopCircle } from "lucide-react";
+import { Server, Plus, Power, RefreshCw, Loader2, ExternalLink, Terminal, StopCircle, Copy, Check } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,39 @@ const idempotencyKey = () => {
     return crypto.randomUUID();
   }
   return Math.random().toString(36).slice(2);
+};
+
+type ParsedSessionLog = {
+  text: string;
+  sshLink?: string;
+  ipAddress?: string;
+};
+
+const normalizeSessionLog = (raw: string): ParsedSessionLog => {
+  if (!raw) {
+    return { text: "" };
+  }
+
+  const withoutBreaks = raw.replace(/<br\s*\/?>/gi, "\n");
+  const normalized = withoutBreaks.replace(/\r\n?/g, "\n");
+  const lines = normalized.split("\n");
+
+  const sshLine = lines.find((line) => line.toLowerCase().includes("sshx link"));
+  const ipLine = lines.find((line) => /^ip\s*:/i.test(line.trim()));
+
+  const sshLink = sshLine ? sshLine.split(":").slice(1).join(":").trim() : undefined;
+
+  let ipAddress: string | undefined;
+  if (ipLine) {
+    const match = ipLine.match(/IP\s*:\s*([0-9a-fA-F:.]+)/i);
+    ipAddress = match ? match[1].trim() : ipLine.split(":").slice(1).join(":").trim();
+  }
+
+  return {
+    text: normalized.trim(),
+    sshLink: sshLink || undefined,
+    ipAddress: ipAddress || undefined,
+  };
 };
 
 const normalizeAction = (raw: unknown): number | null => {
@@ -156,6 +189,7 @@ const useSessionLog = (session: VpsSession) => {
   return useQuery({
     queryKey: ["vps-session-log", session.id],
     queryFn: () => fetchVpsSessionLog(session.id),
+    select: normalizeSessionLog,
     enabled,
     refetchInterval: () => computeRefetchInterval(session),
     retry: false,
@@ -201,24 +235,10 @@ export default function VPS() {
     setSelectedVariant(defaultVariant);
   }, [selectedProduct]);
 
-  const visibleSessions = useMemo(() => {
-    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    return sessions.filter((session) => {
-      if (session.status !== "deleted") {
-        return true;
-      }
-      const reference = session.updated_at ?? session.created_at;
-      if (!reference) {
-        return false;
-      }
-      const timestamp = new Date(reference).getTime();
-      if (Number.isNaN(timestamp)) {
-        return false;
-      }
-      return now - timestamp < sevenDaysMs;
-    });
-  }, [sessions]);
+  const visibleSessions = useMemo(
+    () => sessions.filter((session) => session.status !== "deleted"),
+    [sessions],
+  );
 
   const sortedSessions = useMemo(() => {
     const priority = (status: string) => {
@@ -496,6 +516,100 @@ const SessionCard = ({ session, onStop, isStopping }: SessionCardProps) => {
   const status = statusBadge(session.status);
   const variantLabel = workerActionLabel(session);
   const canStop = !["deleted", "failed", "expired"].includes(session.status);
+  const hasLog = Boolean(session.has_log && session.worker_route);
+  const parsedLog = logQuery.data;
+  const logText = parsedLog?.text ?? "";
+  const sshLink = parsedLog?.sshLink;
+  const ipAddress = parsedLog?.ipAddress;
+  const connectionSummary = ipAddress ? `${ipAddress} | Admin | Quackxlt4c` : null;
+  const [showFullLog, setShowFullLog] = useState(false);
+  const [sshCopied, setSshCopied] = useState(false);
+  const [ipCopied, setIpCopied] = useState(false);
+
+  useEffect(() => {
+    setSshCopied(false);
+  }, [sshLink]);
+
+  useEffect(() => {
+    setIpCopied(false);
+  }, [connectionSummary]);
+
+  const copyToClipboard = useCallback(async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch (error) {
+      console.error("copy-to-clipboard", error);
+      return false;
+    }
+  }, []);
+
+  const handleCopySsh = useCallback(async () => {
+    if (!sshLink) return;
+    const ok = await copyToClipboard(sshLink);
+    if (ok) {
+      setSshCopied(true);
+      setTimeout(() => setSshCopied(false), 1500);
+    }
+  }, [copyToClipboard, sshLink]);
+
+  const handleCopyConnection = useCallback(async () => {
+    if (!connectionSummary) return;
+    const ok = await copyToClipboard(connectionSummary);
+    if (ok) {
+      setIpCopied(true);
+      setTimeout(() => setIpCopied(false), 1500);
+    }
+  }, [connectionSummary, copyToClipboard]);
+
+  const handleDownloadRdp = useCallback(() => {
+    if (!ipAddress) return;
+    const rdpContent = [
+      "screen mode id:i:2",
+      "use multimon:i:0",
+      "session bpp:i:32",
+      "compression:i:1",
+      "keyboardhook:i:2",
+      "redirectclipboard:i:1",
+      "audio mode:i:0",
+      "redirectprinters:i:0",
+      "redirectcomports:i:0",
+      "redirectsmartcards:i:1",
+      "redirectdrives:i:0",
+      "networkautodetect:i:1",
+      "bandwidthautodetect:i:1",
+      "displayconnectionbar:i:1",
+      "authentication level:i:2",
+      "prompt for credentials:i:0",
+      "negotiate security layer:i:1",
+      "remoteapplicationmode:i:0",
+      "alternate shell:s:",
+      "shell working directory:s:",
+      `full address:s:${ipAddress}`,
+      "gatewayhostname:s:",
+      "gatewayusagemethod:i:4",
+      "gatewaycredentialssource:i:4",
+      "gatewayprofileusagemethod:i:0",
+      "promptcredentialonce:i:0",
+      "kdcproxyname:s:",
+      "drivestoredirect:s:",
+      "disableconnectionsharing:i:0",
+      "autoreconnection enabled:i:1",
+      "authentication service class:s:",
+      "pcb:s:",
+      "gatewaybrokeringtype:i:0",
+      "prompt for credentials on client:i:0",
+      "username:s:Admin",
+    ].join("\n");
+    const blob = new Blob([rdpContent], { type: "application/x-rdp" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    const filenameBase = session.worker_route || session.id;
+    anchor.download = `${filenameBase}.rdp`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, [ipAddress, session.id, session.worker_route]);
 
   return (
     <Card className="glass-card">
@@ -523,7 +637,28 @@ const SessionCard = ({ session, onStop, isStopping }: SessionCardProps) => {
               <InfoRow label="Máy chủ thực thi" value={session.worker_route ?? "--"} />
               <InfoRow label="Tạo lúc" value={formatDateTime(session.created_at)} />
               <InfoRow label="Cập nhật" value={formatDateTime(session.updated_at)} />
-              <InfoRow label="Nhật ký" value={session.log_url ? "Có sẵn" : "Chưa khả dụng"} />
+              <InfoRow label="Nhật ký" value={hasLog ? "Có sẵn" : "Chưa khả dụng"} />
+              {sshLink && (
+                <ActionRow
+                  label="Kết nối SSHx"
+                  displayValue={sshLink}
+                  onCopy={handleCopySsh}
+                  copied={sshCopied}
+                />
+              )}
+              {connectionSummary && (
+                <ActionRow
+                  label="Kết nối RDP"
+                  displayValue={connectionSummary}
+                  onCopy={handleCopyConnection}
+                  copied={ipCopied}
+                  trailing={
+                    <Button variant="outline" size="sm" onClick={handleDownloadRdp} className="px-2">
+                      📂
+                    </Button>
+                  }
+                />
+              )}
             </div>
             {session.status === "ready" && session.rdp && <ConnectionDetails session={session} />}
             <div className="flex flex-wrap gap-2">
@@ -537,22 +672,81 @@ const SessionCard = ({ session, onStop, isStopping }: SessionCardProps) => {
                 {isStopping ? <Loader2 className="w-4 h-4 animate-spin" /> : <StopCircle className="w-4 h-4" />}
                 {isStopping ? "Đang dừng…" : "Dừng phiên"}
               </Button>
-              {session.log_url && (
-                <Button variant="outline" size="sm" className="gap-2" asChild>
-                  <a href={session.log_url} target="_blank" rel="noreferrer">
-                    <ExternalLink className="w-4 h-4" />
-                    Mở nhật ký
-                  </a>
+              {hasLog && (
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => setShowFullLog(true)}>
+                  <ExternalLink className="w-4 h-4" />
+                  Xem nhật ký
                 </Button>
               )}
             </div>
           </div>
-          <SessionLogPanel session={session} query={logQuery} />
+          <SessionLogPanel
+            session={session}
+            query={logQuery}
+            logText={logText}
+            onOpenFullLog={() => setShowFullLog(true)}
+          />
         </div>
       </CardContent>
+      <Dialog open={showFullLog} onOpenChange={setShowFullLog}>
+        <DialogContent className="max-w-3xl space-y-4">
+          <DialogHeader>
+            <DialogTitle>Nhật ký hoạt động</DialogTitle>
+            <DialogDescription>Toàn bộ nhật ký của phiên {session.worker_route ?? session.id}.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto rounded-md border border-border/40 bg-muted/20 p-4">
+            {logQuery.isLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Đang tải nhật ký...
+              </div>
+            ) : logQuery.isError ? (
+              <p className="text-sm text-destructive">
+                {logQuery.error instanceof ApiError
+                  ? logQuery.error.message
+                  : logQuery.error instanceof Error
+                    ? logQuery.error.message
+                    : "Không thể tải nhật ký."}
+              </p>
+            ) : (
+              <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">{logText || "(nhật ký trống)"}</pre>
+            )}
+          </div>
+          <DialogFooter className="justify-end">
+            <Button variant="outline" onClick={() => setShowFullLog(false)}>
+              Đóng
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };
+
+type ActionRowProps = {
+  label: string;
+  displayValue: string;
+  onCopy: () => void;
+  copied: boolean;
+  trailing?: ReactNode;
+};
+
+const ActionRow = ({ label, displayValue, onCopy, copied, trailing }: ActionRowProps) => (
+  <div className="flex flex-col">
+    <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={onCopy}
+        className="flex items-center gap-2 rounded border border-transparent px-2 py-1 text-sm font-medium text-primary transition hover:border-primary/40 hover:bg-primary/5"
+      >
+        <span className="break-all text-left">{displayValue}</span>
+        {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4 text-primary" />}
+      </button>
+      {trailing}
+    </div>
+  </div>
+);
 
 const InfoRow = ({ label, value }: { label: string; value: string }) => (
   <div className="flex flex-col">
@@ -600,9 +794,11 @@ const ConnectionDetails = ({ session }: { session: VpsSession }) => {
 type SessionLogPanelProps = {
   session: VpsSession;
   query: ReturnType<typeof useSessionLog>;
+  logText: string;
+  onOpenFullLog: () => void;
 };
 
-const SessionLogPanel = ({ session, query }: SessionLogPanelProps) => {
+const SessionLogPanel = ({ session, query, logText, onOpenFullLog }: SessionLogPanelProps) => {
   const hasLog = Boolean(session.has_log && session.worker_route);
   const autoRefresh = computeRefetchInterval(session);
   let content: ReactNode;
@@ -625,10 +821,7 @@ const SessionLogPanel = ({ session, query }: SessionLogPanelProps) => {
           : "Không thể tải nhật ký.";
     content = <p className="text-xs text-destructive">{message}</p>;
   } else {
-    const text = query.data ?? "";
-    content = (
-      <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">{text || "(nhật ký trống)"}</pre>
-    );
+    content = <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">{logText || "(nhật ký trống)"}</pre>;
   }
 
   return (
@@ -638,16 +831,22 @@ const SessionLogPanel = ({ session, query }: SessionLogPanelProps) => {
           <Terminal className="w-4 h-4" />
           Nhật ký hoạt động
         </p>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-2"
-          onClick={() => query.refetch()}
-          disabled={!hasLog || query.isFetching}
-        >
-          {query.isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          Làm mới
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2"
+            onClick={() => query.refetch()}
+            disabled={!hasLog || query.isFetching}
+          >
+            {query.isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Làm mới
+          </Button>
+          <Button variant="ghost" size="sm" className="gap-2" onClick={onOpenFullLog} disabled={!hasLog}>
+            <ExternalLink className="w-4 h-4" />
+            Xem toàn bộ
+          </Button>
+        </div>
       </div>
       <ScrollArea className="h-[260px] rounded-md border border-border/40 bg-muted/20">
         <div className="p-4">{content}</div>
