@@ -36,8 +36,122 @@ import type { BannerMessage } from "@/lib/types";
 
 const queryClient = new QueryClient();
 
+const BANNER_STORAGE_KEY = "lt4c.banner.dismissed";
+const BANNER_COOLDOWN_MS = 30 * 60 * 1000;
+
+const GlobalBanner = () => {
+  const { data } = useQuery<BannerMessage>({
+    queryKey: ["banner-message"],
+    queryFn: fetchBannerMessage,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const message = useMemo(() => (data?.message ?? "").trim(), [data?.message]);
+  const identifier = useMemo(
+    () => (message ? `${message}|${data?.updated_at ?? ""}` : ""),
+    [message, data?.updated_at],
+  );
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (!identifier) {
+      setVisible(false);
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    const raw = window.localStorage.getItem(BANNER_STORAGE_KEY);
+    if (!raw) {
+      setVisible(true);
+      return;
+    }
+
+    let timeoutId: ReturnType<typeof window.setTimeout> | undefined;
+    try {
+      const stored = JSON.parse(raw) as { identifier?: string; dismissedAt?: number };
+      if (stored.identifier !== identifier || !stored.dismissedAt) {
+        setVisible(true);
+      } else {
+        const elapsed = Date.now() - stored.dismissedAt;
+        if (elapsed >= BANNER_COOLDOWN_MS) {
+          setVisible(true);
+        } else {
+          setVisible(false);
+          timeoutId = window.setTimeout(() => {
+            setVisible(true);
+          }, BANNER_COOLDOWN_MS - elapsed);
+        }
+      }
+    } catch {
+      setVisible(true);
+    }
+
+    return () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [identifier]);
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    if (typeof document === "undefined") {
+      return;
+    }
+    const { body } = document;
+    const previous = body.style.overflow;
+    body.style.overflow = "hidden";
+    return () => {
+      body.style.overflow = previous;
+    };
+  }, [visible]);
+
+  const handleDismiss = useCallback(() => {
+    if (typeof window !== "undefined" && identifier) {
+      window.localStorage.setItem(
+        BANNER_STORAGE_KEY,
+        JSON.stringify({ identifier, dismissedAt: Date.now() }),
+      );
+    }
+    setVisible(false);
+  }, [identifier]);
+
+  if (!identifier || !visible) {
+    return null;
+  }
+
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/70 dark:bg-background/80 px-4 backdrop-blur-sm">
+      <div className="glass-card w-full max-w-2xl space-y-6 rounded-3xl border border-border/40 bg-background/95 p-6 shadow-2xl">
+        <div className="space-y-2">
+          <p className="whitespace-pre-line text-base leading-relaxed text-foreground">{message}</p>
+          {data?.updated_at && (
+            <p className="text-xs text-muted-foreground">
+              Cập nhật: {new Date(data.updated_at).toLocaleString()}
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={handleDismiss}>
+            Đã hiểu
+          </Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
 const DashboardLayout = ({ children }: { children: React.ReactNode }) => (
   <SidebarProvider>
+    <GlobalBanner />
     <div className="min-h-screen flex w-full">
       <AppSidebar />
       <div className="flex-1 flex flex-col">

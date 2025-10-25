@@ -174,23 +174,37 @@ const computeRefetchInterval = (session: VpsSession): number | false => {
   if (status === "deleted" || status === "failed" || status === "expired") {
     return false;
   }
-  if (status === "ready") {
-    return 15000;
-  }
-  if (status === "provisioning" || status === "pending") {
-    return 4000;
-  }
-  return 8000;
+  return 4000;
 };
 
 const useSessionLog = (session: VpsSession) => {
-  const enabled = Boolean(session.has_log && session.worker_route);
+  const hasLog = Boolean(session.has_log && session.worker_route);
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (!hasLog) {
+      setEnabled(false);
+    } else {
+      setEnabled(false);
+      timer = setTimeout(() => {
+        setEnabled(true);
+      }, 4000);
+    }
+    return () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [hasLog, session.id]);
+
   return useQuery({
     queryKey: ["vps-session-log", session.id],
     queryFn: () => fetchVpsSessionLog(session.id),
     select: normalizeSessionLog,
     enabled,
-    refetchInterval: () => computeRefetchInterval(session),
+    refetchInterval: enabled ? 4000 : false,
+    refetchIntervalInBackground: true,
     retry: false,
   });
 };
