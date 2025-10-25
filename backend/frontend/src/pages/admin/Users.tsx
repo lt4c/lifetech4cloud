@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Search, Shield, Users as UsersIcon, UserPlus, Loader2, Pencil, Trash2, Coins } from "lucide-react";
+import {
+  Search,
+  Shield,
+  Users as UsersIcon,
+  UserPlus,
+  Loader2,
+  Pencil,
+  Trash2,
+  Coins,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +58,8 @@ import {
 import type { AdminRole, AdminUser, AdminUsersResponse } from "@/lib/types";
 import { toast } from "@/components/ui/sonner";
 import { Slab } from "react-loading-indicators";
+
+const PAGE_SIZE = 40;
 
 const initials = (name: string | null, fallback: string) => {
   const base = name || fallback;
@@ -95,14 +108,23 @@ const defaultManageState: ManageUserFormState = {
 export default function Users() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+
+  // reset về trang 1 khi đổi từ khóa
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   const { data, isLoading } = useQuery<AdminUsersResponse>({
-    queryKey: ["admin-users", search],
-    queryFn: () => fetchAdminUsers({ q: search || undefined, page_size: 50 }),
+    queryKey: ["admin-users", { q: search, page, page_size: PAGE_SIZE }],
+    queryFn: () => fetchAdminUsers({ q: search || undefined, page, page_size: PAGE_SIZE }),
     keepPreviousData: true,
+    staleTime: 10_000,
   });
 
+  const total = data?.total ?? 0;
   const users = useMemo(() => data?.items ?? [], [data?.items]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const { data: roleOptions = [] } = useQuery<AdminRole[]>({
     queryKey: ["admin-roles"],
@@ -111,11 +133,10 @@ export default function Users() {
   });
 
   const aggregates = useMemo(() => {
-    const total = data?.total ?? users.length;
     const admins = users.filter((user) => user.roles.some((role) => role.name === "admin")).length;
     const moderators = users.filter((user) => user.roles.some((role) => role.name === "moderator")).length;
     return { total, admins, moderators };
-  }, [data?.total, users]);
+  }, [total, users]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<CreateUserFormState>(defaultCreateState);
@@ -324,6 +345,22 @@ export default function Users() {
     deleteUserMutation.mutate(deleteTarget.id);
   };
 
+  // helper cho thanh tabs phân trang
+  const goToPage = (p: number) => {
+    setPage(Math.min(Math.max(1, p), totalPages));
+  };
+
+  const pageNumbers = useMemo(() => {
+    // hiển thị gọn: luôn hiện trang hiện tại ±2, đầu và cuối
+    const pages = new Set<number>();
+    pages.add(1);
+    pages.add(totalPages);
+    for (let p = page - 2; p <= page + 2; p++) {
+      if (p >= 1 && p <= totalPages) pages.add(p);
+    }
+    return Array.from(pages).sort((a, b) => a - b);
+  }, [page, totalPages]);
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -343,21 +380,21 @@ export default function Users() {
         {[
           {
             label: "Tổng số người dùng",
-            value: aggregates.total.toLocaleString(),
+            value: total.toLocaleString(),
             icon: UsersIcon,
             description: "Phân trang qua admin API",
           },
           {
-            label: "Quản trị viên",
+            label: "Quản trị viên (trong trang hiện tại)",
             value: aggregates.admins.toString(),
             icon: Shield,
-            description: "Tài khoản có vai trò admin",
+            description: "Đếm theo trang đang xem",
           },
           {
-            label: "Điều hành viên",
+            label: "Điều hành viên (trong trang hiện tại)",
             value: aggregates.moderators.toString(),
             icon: Shield,
-            description: "Tài khoản có vai trò moderator",
+            description: "Đếm theo trang đang xem",
           },
         ].map((stat) => (
           <Card key={stat.label} className="glass-card">
@@ -382,7 +419,7 @@ export default function Users() {
                 Hiển thị từ <code className="font-mono text-xs">/api/v1/admin/users</code>.
               </CardDescription>
             </div>
-            <div className="relative w-full md:w-[300px]">
+            <div className="relative w-full md:w-[360px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Tìm theo username hoặc email..."
@@ -392,7 +429,52 @@ export default function Users() {
               />
             </div>
           </div>
+
+          {/* Tabs phân trang */}
+          <div className="mt-4">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={() => goToPage(page - 1)} disabled={page <= 1}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+
+              <div className="flex-1 overflow-x-auto">
+                <div className="flex items-center gap-2 w-max">
+                  {pageNumbers.map((p, idx) => {
+                    const prev = pageNumbers[idx - 1];
+                    const needEllipsis = prev !== undefined && p - prev > 1;
+                    return (
+                      <div key={p} className="flex items-center gap-2">
+                        {needEllipsis && <span className="px-1 text-muted-foreground">…</span>}
+                        <Button
+                          variant={p === page ? "default" : "outline"}
+                          size="sm"
+                          className="min-w-9"
+                          onClick={() => goToPage(p)}
+                        >
+                          {p}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => goToPage(page + 1)}
+                disabled={page >= totalPages}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+
+              <div className="hidden md:block text-xs text-muted-foreground ml-2">
+                Trang {page}/{totalPages} • {PAGE_SIZE} người/trang
+              </div>
+            </div>
+          </div>
         </CardHeader>
+
         <CardContent>
           <div className="w-full overflow-x-auto rounded-lg border border-border/40">
             <Table>
@@ -402,20 +484,21 @@ export default function Users() {
                   <TableHead>Email</TableHead>
                   <TableHead>Vai trò</TableHead>
                   <TableHead>Discord ID</TableHead>
+                  <TableHead className="text-center">Xu</TableHead>
                   <TableHead className="w-[120px] text-right">Thao tác</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
                       <Slab color="#d18d00" size="large" text="Đang tải nội dung từ server" textColor="" />
                     </TableCell>
                   </TableRow>
                 )}
                 {!isLoading && users.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
                       Không tìm thấy người dùng phù hợp.
                     </TableCell>
                   </TableRow>
@@ -449,7 +532,9 @@ export default function Users() {
                           ))}
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm font-mono">{user.discord_id_suffix ? `****${user.discord_id_suffix}` : "--"}</TableCell>
+                      <TableCell className="text-sm font-mono">
+                        {user.discord_id_suffix ? `****${user.discord_id_suffix}` : "--"}
+                      </TableCell>
                       <TableCell className="text-center">
                         <Button
                           variant="ghost"
@@ -639,7 +724,7 @@ export default function Users() {
 
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Vai trò</h3>
-                <div className="space-y-2 rounded-lg border border-border/40 p-3 max-h-[360px] overflow-auto">
+                <div className="space-y-2 rounded-lg border border-border/40 p-3 max-h=[360px] overflow-auto">
                   {roleOptions.length === 0 && (
                     <p className="text-xs text-muted-foreground">Chưa có vai trò nào.</p>
                   )}
