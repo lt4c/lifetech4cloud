@@ -301,6 +301,16 @@ class AdsSettingsResponse(BaseModel):
     enabled: bool
 
 
+class BannerMessageResponse(BaseModel):
+    message: str
+    updated_at: datetime | None = None
+    updated_by: UUID | None = None
+
+
+class BannerMessageUpdateRequest(BaseModel):
+    message: str = Field(default="", max_length=2000)
+
+
 class KyaroPromptResponse(BaseModel):
     prompt: str
     version: int | None = None

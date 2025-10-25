@@ -3,6 +3,7 @@ import type {
   AdminUser,
   AdminUsersResponse,
   AdsSettings,
+  BannerMessage,
   HealthConfig,
   KyaroPrompt,
   StatusDb,
@@ -1186,6 +1187,25 @@ export const fetchStatusDb = async (): Promise<StatusDb> => {
 /* Settings */
 export const fetchAdsSettings = async (): Promise<AdsSettings> => {
   return apiFetch<AdsSettings>("/api/v1/admin/settings/ads");
+};
+
+export const fetchBannerMessage = async (): Promise<BannerMessage> => {
+  return apiFetch<BannerMessage>("/banner");
+};
+
+export const fetchAdminBannerMessage = async (): Promise<BannerMessage> => {
+  return apiFetch<BannerMessage>("/api/v1/admin/settings/banner");
+};
+
+export const updateAdminBannerMessage = async (
+  payload: { message: string },
+): Promise<BannerMessage> => {
+  const body = JSON.stringify(payload);
+  return apiFetch<BannerMessage>("/api/v1/admin/settings/banner", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
 };
 
 export const fetchKyaroPrompt = async (): Promise<KyaroPrompt> => {

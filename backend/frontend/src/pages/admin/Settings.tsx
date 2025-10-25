@@ -11,8 +11,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import {
   fetchAdsSettings,
+  fetchAdminBannerMessage,
   fetchAdminVersionInfo,
   fetchKyaroPrompt,
+  updateAdminBannerMessage,
   updateAdminVersionInfo,
   updateKyaroPrompt,
   uploadAdminAsset,
@@ -20,6 +22,7 @@ import {
 import type {
   AdsSettings,
   AssetUploadResponse,
+  BannerMessage,
   KyaroPrompt,
   VersionChannel,
   VersionInfo,
@@ -73,8 +76,16 @@ export default function Settings() {
     staleTime: 60_000,
   });
 
+  const { data: banner } = useQuery<BannerMessage>({
+    queryKey: ["admin-settings", "banner"],
+    queryFn: fetchAdminBannerMessage,
+    staleTime: 60_000,
+  });
+
   const [draftPrompt, setDraftPrompt] = useState("");
   const [promptTouched, setPromptTouched] = useState(false);
+  const [bannerDraft, setBannerDraft] = useState("");
+  const [bannerTouched, setBannerTouched] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadedAsset, setUploadedAsset] = useState<AssetUploadResponse | null>(null);
   const [versionChannel, setVersionChannel] = useState<VersionChannel>("dev");
@@ -93,6 +104,26 @@ export default function Settings() {
     }
   }, [versionInfo?.channel, versionInfo?.version]);
 
+  useEffect(() => {
+    if (banner?.message !== undefined && !bannerTouched) {
+      setBannerDraft(banner.message ?? "");
+    }
+  }, [banner?.message, bannerTouched]);
+
+  const updateBannerMutation = useMutation({
+    mutationFn: updateAdminBannerMessage,
+    onSuccess: (data) => {
+      toast("Banner message updated.");
+      queryClient.setQueryData(["admin-settings", "banner"], data);
+      setBannerDraft(data.message ?? "");
+      setBannerTouched(false);
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to update banner message.";
+      toast(message);
+    },
+  });
+
   const updatePromptMutation = useMutation({
     mutationFn: updateKyaroPrompt,
     onSuccess: (data) => {
@@ -105,6 +136,22 @@ export default function Settings() {
       toast(message);
     },
   });
+
+  const bannerChanged = useMemo(
+    () => bannerDraft !== (banner?.message ?? ""),
+    [bannerDraft, banner?.message],
+  );
+
+  const bannerUpdatedAgo = useMemo(() => {
+    if (!banner?.updated_at) {
+      return null;
+    }
+    try {
+      return formatDistanceToNow(new Date(banner.updated_at), { addSuffix: true });
+    } catch {
+      return banner.updated_at;
+    }
+  }, [banner?.updated_at]);
 
   const promptChanged = useMemo(
     () => draftPrompt !== (kyaro?.prompt ?? ""),
@@ -312,6 +359,48 @@ export default function Settings() {
             {!promptValid && (
               <p className="text-xs text-destructive">Prompt cannot be empty.</p>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="glass-card">
+          <CardHeader>
+            <CardTitle>Global Banner Message</CardTitle>
+            <CardDescription>Displayed to users in a dismissible banner at the top of the app.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Textarea
+              value={bannerDraft}
+              onChange={(event) => {
+                setBannerDraft(event.target.value);
+                setBannerTouched(true);
+              }}
+              className="glass-card h-32"
+              placeholder="Nhập nội dung thông báo..."
+            />
+            <p className="text-xs text-muted-foreground">
+              Để trống để ẩn thông báo. Người dùng có thể tắt thông báo và nó sẽ hiển thị lại sau 30 phút.
+            </p>
+            {bannerUpdatedAgo && (
+              <p className="text-xs text-muted-foreground">Cập nhật gần nhất: {bannerUpdatedAgo}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setBannerDraft(banner?.message ?? "");
+                  setBannerTouched(false);
+                }}
+                disabled={!bannerChanged || updateBannerMutation.isLoading}
+              >
+                Reset
+              </Button>
+              <Button
+                onClick={() => updateBannerMutation.mutate({ message: bannerDraft })}
+                disabled={!bannerChanged || updateBannerMutation.isLoading}
+              >
+                {updateBannerMutation.isLoading ? "Saving..." : "Save Banner"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>

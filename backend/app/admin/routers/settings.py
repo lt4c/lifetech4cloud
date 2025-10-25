@@ -11,6 +11,8 @@ from app.admin.deps import require_perm
 from app.admin.schemas import (
     AdsSettingsResponse,
     AdsSettingsUpdateRequest,
+    BannerMessageResponse,
+    BannerMessageUpdateRequest,
     KyaroPromptResponse,
     KyaroPromptUpdateRequest,
     VersionInfoResponse,
@@ -31,6 +33,9 @@ router = APIRouter(tags=["admin-settings"])
 
 ADS_KEY = "ads.enabled"
 KYARO_PROMPT_KEY = "kyaro.system_prompt"
+BANNER_MESSAGE_KEY = "platform.banner_message"
+
+
 def _audit_context(request: Request, actor: User) -> AuditContext:
     client_host = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
@@ -64,6 +69,46 @@ async def update_ads_settings(
     }
     store.set(ADS_KEY, value, context=context)
     return AdsSettingsResponse(enabled=payload.enabled)
+
+
+@router.get("/settings/banner", response_model=BannerMessageResponse)
+async def get_banner_message(
+    _: User = Depends(require_perm("settings:banner:read")),
+    db: Session = Depends(get_db),
+) -> BannerMessageResponse:
+    store = SettingsStore(db)
+    value = store.get(BANNER_MESSAGE_KEY, default={"message": ""})
+    message = value.get("message", "")
+    updated_by = value.get("updated_by")
+    try:
+        updated_by_uuid = UUID(updated_by) if updated_by else None
+    except ValueError:
+        updated_by_uuid = None
+    return BannerMessageResponse(
+        message=message,
+        updated_at=value.get("updated_at"),
+        updated_by=updated_by_uuid,
+    )
+
+
+@router.patch("/settings/banner", response_model=BannerMessageResponse)
+async def update_banner_message(
+    request: Request,
+    payload: BannerMessageUpdateRequest,
+    actor: User = Depends(require_perm("settings:banner:update")),
+    db: Session = Depends(get_db),
+) -> BannerMessageResponse:
+    store = SettingsStore(db)
+    context = _audit_context(request, actor)
+    message = payload.message if payload.message is not None else ""
+    now = datetime.now(timezone.utc).isoformat()
+    value = {
+        "message": message,
+        "updated_at": now,
+        "updated_by": str(actor.id),
+    }
+    store.set(BANNER_MESSAGE_KEY, value, context=context)
+    return BannerMessageResponse(message=message, updated_at=now, updated_by=actor.id)
 
 
 @router.get("/kyaro/prompt", response_model=KyaroPromptResponse)

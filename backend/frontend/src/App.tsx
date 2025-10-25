@@ -1,9 +1,12 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Header } from "@/components/Header";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
@@ -28,16 +31,107 @@ import Settings from "@/pages/admin/Settings";
 import NotFound from "@/pages/NotFound";
 import { ThreeDot } from "react-loading-indicators";
 import { Footer } from "@/components/Footer";
+import { fetchBannerMessage } from "@/lib/api-client";
+import type { BannerMessage } from "@/lib/types";
 
 const queryClient = new QueryClient();
 
-const DashboardLayout = ({ children }: { children: React.ReactNode }) => (
+const BANNER_STORAGE_KEY = "lt4c.banner.dismissed";
+const BANNER_COOLDOWN_MS = 30 * 60 * 1000;
+
+const GlobalBanner = () => {
+  const { data } = useQuery<BannerMessage>({
+    queryKey: ["banner-message"],
+    queryFn: fetchBannerMessage,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const message = useMemo(() => (data?.message ?? "").trim(), [data?.message]);
+  const identifier = useMemo(
+    () => (message ? `${message}|${data?.updated_at ?? ""}` : ""),
+    [message, data?.updated_at],
+  );
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (!identifier) {
+      setVisible(false);
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    const raw = window.localStorage.getItem(BANNER_STORAGE_KEY);
+    if (!raw) {
+      setVisible(true);
+      return;
+    }
+    let timeoutId: ReturnType<typeof window.setTimeout> | undefined;
+    try {
+      const stored = JSON.parse(raw) as { identifier?: string; dismissedAt?: number };
+      if (stored.identifier !== identifier) {
+        setVisible(true);
+      } else if (!stored.dismissedAt) {
+        setVisible(true);
+      } else {
+        const elapsed = Date.now() - stored.dismissedAt;
+        if (elapsed >= BANNER_COOLDOWN_MS) {
+          setVisible(true);
+        } else {
+          setVisible(false);
+          timeoutId = window.setTimeout(() => {
+            setVisible(true);
+          }, BANNER_COOLDOWN_MS - elapsed);
+        }
+      }
+    } catch {
+      setVisible(true);
+    }
+    return () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [identifier]);
+
+  const handleDismiss = useCallback(() => {
+    if (typeof window !== "undefined" && identifier) {
+      window.localStorage.setItem(
+        BANNER_STORAGE_KEY,
+        JSON.stringify({ identifier, dismissedAt: Date.now() }),
+      );
+    }
+    setVisible(false);
+  }, [identifier]);
+
+  if (!identifier || !visible) {
+    return null;
+  }
+
+  return (
+    <Alert className="mb-4 border-primary/40 bg-primary/10 backdrop-blur">
+      <div className="flex items-start justify-between gap-3">
+        <AlertDescription className="whitespace-pre-line text-sm text-foreground">
+          {message}
+        </AlertDescription>
+        <Button variant="ghost" size="sm" className="shrink-0 text-xs" onClick={handleDismiss}>
+          Đóng
+        </Button>
+      </div>
+    </Alert>
+  );
+};
+
+const DashboardLayout = ({ children }: { children: ReactNode }) => (
   <SidebarProvider>
     <div className="min-h-screen flex w-full">
       <AppSidebar />
       <div className="flex-1 flex flex-col">
         <Header />
-        <main className="flex-1 p-6 overflow-auto">{children}</main>
+        <main className="flex-1 p-6 overflow-auto">
+          <GlobalBanner />
+          {children}
+        </main>
         <Footer />
       </div>
     </div>
@@ -56,7 +150,7 @@ const LoadingScreen = () => (
   </div>
 );
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   const { isAuthenticated, isLoading } = useAuth();
   if (isLoading) {
     return <LoadingScreen />;
@@ -67,7 +161,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <DashboardLayout>{children}</DashboardLayout>;
 };
 
-const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+const AdminRoute = ({ children }: { children: ReactNode }) => {
   const { isLoading, isAuthenticated, hasAdminAccess } = useAuth();
   if (isLoading) {
     return <LoadingScreen />;

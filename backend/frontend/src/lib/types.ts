@@ -242,6 +242,11 @@ export interface AdsSettings {
   enabled: boolean;
 }
 
+export interface BannerMessage {
+  message: string;
+  updated_at?: string | null;
+}
+
 export interface KyaroPrompt {
   prompt: string;
   version: number | null;

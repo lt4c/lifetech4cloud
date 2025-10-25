@@ -42,6 +42,8 @@ DEFAULT_PERMISSIONS: Dict[str, str] = {
     "settings:ads:update": "Update ads settings",
     "settings:version:read": "Read platform version info",
     "settings:version:update": "Update platform version info",
+    "settings:banner:read": "Read global banner message",
+    "settings:banner:update": "Update global banner message",
     "kyaro:prompt:read": "Read Kyaro system prompt",
     "kyaro:prompt:update": "Update Kyaro system prompt",
     "support:threads:read": "View support inbox",

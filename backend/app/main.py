@@ -35,6 +35,7 @@ from app.admin.seed import grant_role_to_user
 from app.api import ads as ads_router
 from app.api import announcements as announcements_router
 from app.api import restore_admin as restore_admin_router
+from app.api import banner as banner_router
 from app.api import support as support_router
 from app.api import giftcodes as giftcodes_router
 from app.api import version as version_router
@@ -239,6 +240,7 @@ app.include_router(support_router.router)
 app.include_router(announcements_router.router)
 app.include_router(giftcodes_router.router)
 app.include_router(version_router.router)
+app.include_router(banner_router.router)
 
 
 @app.options("/{path:path}", include_in_schema=False)
