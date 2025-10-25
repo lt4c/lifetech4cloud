@@ -55,9 +55,8 @@ const normalizeSessionLog = (raw: string): ParsedSessionLog => {
     return { text: "" };
   }
 
-  const withoutBreaks = raw.replace(/<br\s*\/?>/gi, "\n");
-  const normalized = withoutBreaks.replace(/\r\n?/g, "\n");
-  const lines = normalized.split("\n");
+  const normalized = raw.replace(/<br\s*\/?>/gi, "");
+  const lines = normalized.split(/\r?\n/);
 
   const sshLine = lines.find((line) => line.toLowerCase().includes("sshx link"));
   const ipLine = lines.find((line) => /^ip\s*:/i.test(line.trim()));
@@ -654,7 +653,7 @@ const SessionCard = ({ session, onStop, isStopping }: SessionCardProps) => {
                   copied={ipCopied}
                   trailing={
                     <Button variant="outline" size="sm" onClick={handleDownloadRdp} className="px-2">
-                      📂
+                      ▶
                     </Button>
                   }
                 />
