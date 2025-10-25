@@ -42,6 +42,7 @@ import {
 } from "@/lib/api-client";
 import type { AdminRole } from "@/lib/types";
 import { toast } from "@/components/ui/sonner";
+import { Slab } from "react-loading-indicators";
 
 type RoleDialogMode = "create" | "edit";
 type RoleFormState = {
