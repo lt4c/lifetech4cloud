@@ -23,23 +23,23 @@ import { cn } from "@/lib/utils";
 type NavItem = { title: string; url: string; icon: typeof LayoutDashboard };
 
 const menuItems: NavItem[] = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "VPS", url: "/vps", icon: Server },
-  { title: "Earn Coins", url: "/earn", icon: Gift },
-  { title: "Gets Coin", url: "/gets-coin", icon: Coins },
+  { title: "Bảng điều khiển", url: "/dashboard", icon: LayoutDashboard },
+  { title: "Quản lý VPS", url: "/vps", icon: Server },
+  { title: "Nhận xu (xem QC)", url: "/earn", icon: Gift },
+  { title: "Nhận xu (đóng góp)", url: "/gets-coin", icon: Coins },
   { title: "Giftcode", url: "/giftcode", icon: Ticket },
-  { title: "Support", url: "/support", icon: MessageSquare },
+  { title: "Hỗ trợ", url: "/support", icon: MessageSquare },
 ];
 
 const adminItems: NavItem[] = [
-  { title: "Announcements", url: "/admin/announcements", icon: Megaphone },
-  { title: "Users", url: "/admin/users", icon: Users },
-  { title: "Roles & Permissions", url: "/admin/roles", icon: Shield },
-  { title: "VPS Products", url: "/admin/vps-products", icon: Package },
+  { title: "Thông báo", url: "/admin/announcements", icon: Megaphone },
+  { title: "Người dùng", url: "/admin/users", icon: Users },
+  { title: "Vai trò & Quyền", url: "/admin/roles", icon: Shield },
+  { title: "Sản phẩm VPS", url: "/admin/vps-products", icon: Package },
   { title: "Giftcode", url: "/admin/giftcodes", icon: Gift },
-  { title: "Workers", url: "/admin/workers", icon: Zap },
-  { title: "Analytics", url: "/admin/analytics", icon: TrendingUp },
-  { title: "Settings", url: "/admin/settings", icon: Settings },
+  { title: "Quản lý Workers", url: "/admin/workers", icon: Zap },
+  { title: "Phân tích", url: "/admin/analytics", icon: TrendingUp },
+  { title: "Cài đặt", url: "/admin/settings", icon: Settings },
 ];
 
 const navItemClasses = (collapsed: boolean, isActive: boolean) =>
