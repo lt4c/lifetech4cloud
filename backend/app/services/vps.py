@@ -156,32 +156,6 @@ class VpsService:
             )
         attempted_workers: set[UUID] = {worker.id}
 
-        # Check token availability BEFORE charging coins
-        try:
-            tokens_left = await worker_client.token_left(worker=worker)
-            if tokens_left <= 0:
-                # Try to find another worker with tokens
-                next_worker = selector.select_for_product(product.id, exclude=attempted_workers)
-                if next_worker:
-                    attempted_workers.add(next_worker.id)
-                    worker = next_worker
-                    tokens_left = await worker_client.token_left(worker=worker)
-                    if tokens_left <= 0:
-                        raise HTTPException(
-                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                            detail="No workers with available tokens",
-                        )
-                else:
-                    raise HTTPException(
-                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                        detail="No workers with available tokens",
-                    )
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Unable to verify worker availability",
-            ) from exc
-
         session, session_token = self._initial_session(
             user=user,
             product=product,
@@ -249,6 +223,58 @@ class VpsService:
         while True:
             attempt += 1
             try:
+                # Check token availability right before creating VM to avoid race conditions
+                try:
+                    tokens_left = await worker_client.token_left(worker=worker)
+                except Exception:
+                    # Worker unreachable, skip to next worker or refund
+                    next_worker = selector.select_for_product(product.id, exclude=attempted_workers)
+                    if next_worker:
+                        attempted_workers.add(next_worker.id)
+                        worker = next_worker
+                        continue
+                    else:
+                        await self._refund_session(
+                            session,
+                            wallet_service,
+                            user,
+                            product,
+                            "All workers unreachable",
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="All workers unreachable",
+                        )
+                
+                if tokens_left <= 0:
+                    # Try to find another worker with tokens
+                    next_worker = selector.select_for_product(product.id, exclude=attempted_workers)
+                    if next_worker:
+                        attempted_workers.add(next_worker.id)
+                        worker = next_worker
+                        session.worker_id = worker.id
+                        session.updated_at = datetime.now(timezone.utc)
+                        try:
+                            self.db.add(session)
+                            self.db.commit()
+                            self.db.refresh(session)
+                        except Exception:
+                            self.db.rollback()
+                        continue  # Retry with new worker
+                    else:
+                        # No more workers available, refund
+                        await self._refund_session(
+                            session,
+                            wallet_service,
+                            user,
+                            product,
+                            "No available tokens on any worker",
+                        )
+                        raise HTTPException(
+                            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="No workers with available tokens",
+                        )
+                
                 route, log_url = await worker_client.create_vm(worker=worker, action=action_to_use)
                 break
             except HTTPException as exc:
@@ -265,6 +291,14 @@ class VpsService:
                             tokens_left = await worker_client.token_left(worker=next_worker)
                             if tokens_left > 0:
                                 worker = next_worker
+                                session.worker_id = worker.id
+                                session.updated_at = datetime.now(timezone.utc)
+                                try:
+                                    self.db.add(session)
+                                    self.db.commit()
+                                    self.db.refresh(session)
+                                except Exception:
+                                    self.db.rollback()
                                 continue
                         except Exception:
                             pass  # Fall through to refund
