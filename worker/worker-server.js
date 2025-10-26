@@ -225,45 +225,75 @@ app.post('/yud-ranyisi', securityMiddleware, async (req, res) => {
 });
 
 app.post('/vm-loso', securityMiddleware, async (req, res) => {
+  console.log('[VM-LOSO] ====== START REQUEST ======');
+  console.log('[VM-LOSO] Timestamp:', new Date().toISOString());
+  
   const { action } = req.body;
   let selectedToken = null;
 
+  console.log('[VM-LOSO] Request body:', JSON.stringify(req.body));
+  console.log('[VM-LOSO] Action:', action, 'Type:', typeof action);
+
   if (![1, 2, 3].includes(parseInt(action))) {
+    console.log('[VM-LOSO] ERROR: Invalid action');
     return res.status(400).json({ error: 'Invalid action. Must be 1, 2, or 3' });
   }
 
+  console.log('[VM-LOSO] vmCreationLocked:', vmCreationLocked);
   if (vmCreationLocked) {
+    console.log('[VM-LOSO] ERROR: Server busy');
     return res.status(429).json({ error: 'Server busy, please try again later' });
   }
   vmCreationLocked = true;
+  console.log('[VM-LOSO] Lock acquired, vmCreationLocked = true');
 
   try {
+    console.log('[VM-LOSO] Reading worker token file...');
     let tokenData = {};
     if (fs.existsSync(WORKER_TOKEN_FILE)) {
       try {
         tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
+        console.log('[VM-LOSO] Token file loaded, total tokens:', Object.keys(tokenData).length);
       } catch (e) {
+        console.error('[VM-LOSO] ERROR: Failed to parse token file:', e.message);
         return res.status(500).json({ error: 'Invalid worker token file' });
       }
+    } else {
+      console.log('[VM-LOSO] WARNING: Worker token file does not exist');
     }
 
+    console.log('[VM-LOSO] Filtering available tokens...');
     const availableTokens = Object.keys(tokenData).filter(token => {
       const entry = tokenData[token] || {};
       const slot = typeof entry.slot === 'number' ? entry.slot : 0;
       const inUse = entry.inuse === true;
-      return slot >= 1 && !inUse;
+      const isAvailable = slot >= 1 && !inUse;
+      console.log(`[VM-LOSO]   Token ${token.substring(0, 8)}: slot=${slot}, inuse=${inUse}, available=${isAvailable}`);
+      return isAvailable;
     });
 
+    console.log('[VM-LOSO] Available tokens count:', availableTokens.length);
+
     if (availableTokens.length === 0) {
+      console.log('[VM-LOSO] ERROR: No available tokens');
       return res.status(400).json({ error: 'No available tokens' });
     }
 
     selectedToken = availableTokens[Math.floor(Math.random() * availableTokens.length)];
+    console.log('[VM-LOSO] Selected token:', selectedToken.substring(0, 8) + '...');
+    console.log('[VM-LOSO] Token BEFORE update:', JSON.stringify(tokenData[selectedToken]));
+    
     tokenData[selectedToken].slot -= 1;
     tokenData[selectedToken].inuse = true;
+    tokenData[selectedToken].vmStartTime = Date.now(); // Track when VM started
+
+    console.log('[VM-LOSO] Token AFTER update:', JSON.stringify(tokenData[selectedToken]));
+    console.log('[VM-LOSO] vmStartTime:', tokenData[selectedToken].vmStartTime);
 
     const route = 'quack_' + Math.random().toString(36).substring(2, 7);
+    console.log('[VM-LOSO] Generated route:', route);
     fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+    console.log('[VM-LOSO] Token file updated');
 
     let scriptFile;
     switch (parseInt(action)) {
@@ -271,66 +301,126 @@ app.post('/vm-loso', securityMiddleware, async (req, res) => {
       case 2: scriptFile = 'win10.js'; break;
       case 3: scriptFile = '2z2.js'; break;
     }
+    console.log('[VM-LOSO] Selected script:', scriptFile);
+    console.log('[VM-LOSO] Tunnel URL:', tunnelUrl || '(none)');
 
     const { spawn } = require('child_process');
+    console.log('[VM-LOSO] Spawning VM process...');
     const vmProcess = spawn('node', [scriptFile, selectedToken, route, tunnelUrl || ''], {
       stdio: 'inherit',
       detached: true,
       cwd: __dirname
     });
+    console.log('[VM-LOSO] VM process spawned, PID:', vmProcess.pid);
     vmProcess.unref();
+    console.log('[VM-LOSO] VM process detached');
 
     const releaseToken = () => {
+      console.log('[VM-LOSO] [RELEASE TOKEN] Starting token release...');
       try {
         if (!fs.existsSync(WORKER_TOKEN_FILE)) {
+          console.log('[VM-LOSO] [RELEASE TOKEN] WARNING: Token file does not exist');
           return;
         }
         const raw = fs.readFileSync(WORKER_TOKEN_FILE, 'utf8');
         if (!raw) {
+          console.log('[VM-LOSO] [RELEASE TOKEN] WARNING: Token file is empty');
           return;
         }
         const tokenData = JSON.parse(raw);
+        console.log('[VM-LOSO] [RELEASE TOKEN] Token file loaded');
         if (tokenData[selectedToken]) {
+          console.log('[VM-LOSO] [RELEASE TOKEN] Found token in data');
+          const vmStartTime = tokenData[selectedToken].vmStartTime || 0;
+          const elapsed = Date.now() - vmStartTime;
+          const sixMinutes = 6 * 60 * 1000; // 6 minutes in milliseconds
+          
+          console.log('[VM-LOSO] [RELEASE TOKEN] vmStartTime:', vmStartTime);
+          console.log('[VM-LOSO] [RELEASE TOKEN] elapsed (ms):', elapsed);
+          console.log('[VM-LOSO] [RELEASE TOKEN] elapsed (minutes):', (elapsed / 60000).toFixed(2));
+          console.log('[VM-LOSO] [RELEASE TOKEN] sixMinutes (ms):', sixMinutes);
+          console.log('[VM-LOSO] [RELEASE TOKEN] Should restore?', elapsed < sixMinutes);
+          
           tokenData[selectedToken].inuse = false;
-          fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
-          console.log(`Token ${selectedToken.substring(0, 8)}... released after process exit`);
+          delete tokenData[selectedToken].vmStartTime;
+          
+          // Only restore slot if VM stopped within 6 minutes
+          if (elapsed < sixMinutes) {
+            const currentSlot = typeof tokenData[selectedToken].slot === 'number' ? tokenData[selectedToken].slot : 0;
+            tokenData[selectedToken].slot = currentSlot + 1;
+            fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+            console.log(`[VM-LOSO] [RELEASE TOKEN] SUCCESS: Token ${selectedToken.substring(0, 8)}... released and slot restored (slot=${tokenData[selectedToken].slot}, elapsed=${Math.round(elapsed/1000)}s)`);
+          } else {
+            fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+            console.log(`[VM-LOSO] [RELEASE TOKEN] Token ${selectedToken.substring(0, 8)}... released but slot NOT restored (elapsed=${Math.round(elapsed/1000)}s > 6min)`);
+          }
+        } else {
+          console.log('[VM-LOSO] [RELEASE TOKEN] WARNING: Token not found in data');
         }
       } catch (releaseErr) {
-        console.error('Failed to release token after VM process exit:', releaseErr.message);
+        console.error('[VM-LOSO] [RELEASE TOKEN] ERROR:', releaseErr.message);
+        console.error('[VM-LOSO] [RELEASE TOKEN] Stack:', releaseErr.stack);
       }
     };
 
-    vmProcess.on('exit', releaseToken);
+    vmProcess.on('exit', (code, signal) => {
+      console.log('[VM-LOSO] VM process exited with code:', code, 'signal:', signal);
+      releaseToken();
+    });
     vmProcess.on('error', (err) => {
-      console.error('VM process error:', err.message);
+      console.error('[VM-LOSO] VM process error:', err.message);
       releaseToken();
     });
 
-    console.log(`Started ${scriptFile} with token ${selectedToken} and route ${route}`);
+    console.log('[VM-LOSO] ====== END REQUEST (SUCCESS) ======');
+    console.log(`Started ${scriptFile} with token ${selectedToken.substring(0, 8)}... and route ${route}`);
     res.json({ logUrl: `/log/${route}` });
   } catch (error) {
+    console.error('[VM-LOSO] ====== ERROR ======');
+    console.error('[VM-LOSO] Error:', error.message);
+    console.error('[VM-LOSO] Stack:', error.stack);
+    
     if (selectedToken) {
+      console.log('[VM-LOSO] Attempting to restore token after error...');
       try {
         if (fs.existsSync(WORKER_TOKEN_FILE)) {
           const raw = fs.readFileSync(WORKER_TOKEN_FILE, 'utf8');
           const tokenData = raw ? JSON.parse(raw) : {};
           if (tokenData[selectedToken]) {
+            const vmStartTime = tokenData[selectedToken].vmStartTime || Date.now();
+            const elapsed = Date.now() - vmStartTime;
+            const sixMinutes = 6 * 60 * 1000;
+            
+            console.log('[VM-LOSO] vmStartTime:', vmStartTime);
+            console.log('[VM-LOSO] elapsed:', elapsed, 'ms =', (elapsed/1000).toFixed(2), 's');
+            
             tokenData[selectedToken].inuse = false;
-            tokenData[selectedToken].slot = Math.max(
-              typeof tokenData[selectedToken].slot === 'number' ? tokenData[selectedToken].slot + 1 : 1,
-              1
-            );
-            fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+            delete tokenData[selectedToken].vmStartTime;
+            
+            // Always restore slot on error (VM creation failed, should restore)
+            if (elapsed < sixMinutes) {
+              const currentSlot = typeof tokenData[selectedToken].slot === 'number' ? tokenData[selectedToken].slot : 0;
+              tokenData[selectedToken].slot = currentSlot + 1;
+              fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+              console.log(`[VM-LOSO] Token ${selectedToken.substring(0, 8)}... restored after VM creation error (slot=${tokenData[selectedToken].slot})`);
+            } else {
+              fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+              console.log(`[VM-LOSO] Token ${selectedToken.substring(0, 8)}... error but slot NOT restored (elapsed=${Math.round(elapsed/1000)}s > 6min)`);
+            }
+          } else {
+            console.log('[VM-LOSO] WARNING: Token not found in data');
           }
         }
       } catch (restoreErr) {
-        console.error('Failed to restore token after VM creation error:', restoreErr.message);
+        console.error('[VM-LOSO] Failed to restore token after VM creation error:', restoreErr.message);
       }
     }
-    console.error('Error while creating VM:', error.message);
+    console.error('[VM-LOSO] ====== END ERROR ======');
     res.status(500).json({ error: 'Internal server error', details: error.message });
   } finally {
     vmCreationLocked = false;
+    console.log('[VM-LOSO] Lock released, vmCreationLocked = false');
+    console.log('[VM-LOSO] ====== END REQUEST ======');
   }
 });
 
@@ -686,9 +776,24 @@ app.post('/stop/:route', securityMiddleware, async (req, res) => {
       }
     });
 
-    // Reset token inuse status
+    // Reset token inuse status and restore slot based on elapsed time
     tokenData[usedToken].inuse = false;
+    
+    const vmStartTime = tokenData[usedToken].vmStartTime || 0;
+    const elapsed = Date.now() - vmStartTime;
+    const sixMinutes = 6 * 60 * 1000;
+    delete tokenData[usedToken].vmStartTime;
+    
+    // Only restore slot if VM stopped within 6 minutes
+    if (elapsed < sixMinutes) {
+      const currentSlot = typeof tokenData[usedToken].slot === 'number' ? tokenData[usedToken].slot : 0;
+      tokenData[usedToken].slot = currentSlot + 1;
+      fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+      console.log(`Token ${usedToken.substring(0, 8)}... reset and slot restored (slot=${tokenData[usedToken].slot}, elapsed=${Math.round(elapsed/1000)}s)`);
+    } else {
     fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+      console.log(`Token ${usedToken.substring(0, 8)}... reset but slot NOT restored (elapsed=${Math.round(elapsed/1000)}s > 6min)`);
+    }
 
     // Add log entry about stopping
     const logFile = path.join(__dirname, `${route}.txt`);
