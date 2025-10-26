@@ -661,10 +661,14 @@ app.get('/health', (req, res) => {
     if (fs.existsSync(WORKER_TOKEN_FILE)) {
       const tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
       for (const data of Object.values(tokenData)) {
-        if (typeof data.slot === 'number' && data.slot > 0) {
-          totalSlots += data.slot;
+        const slot = typeof data.slot === 'number' ? data.slot : 0;
+        const inUseStatus = data.inuse === true;
+        
+        // Only count slots for tokens that are NOT in use
+        if (slot > 0 && !inUseStatus) {
+          totalSlots += slot;
         }
-        if (data.inuse) {
+        if (inUseStatus) {
           inUse += 1;
         }
       }
@@ -702,21 +706,37 @@ app.get('/health', (req, res) => {
 app.get('/tokenleft', (req, res) => {
   try {
     if (!fs.existsSync(WORKER_TOKEN_FILE)) {
+      console.log('[TOKENLEFT] Token file does not exist, returning 0');
       return res.json({ totalSlots: 0 });
     }
 
     const tokenData = JSON.parse(fs.readFileSync(WORKER_TOKEN_FILE, 'utf8'));
     let totalSlots = 0;
+    let inUseCount = 0;
+    let availableCount = 0;
 
+    console.log('[TOKENLEFT] Calculating available slots...');
+    
     for (const [token, data] of Object.entries(tokenData)) {
-      if (typeof data.slot === 'number' && data.slot > 0) {
-        totalSlots += data.slot;
+      const slot = typeof data.slot === 'number' ? data.slot : 0;
+      const inUse = data.inuse === true;
+      
+      if (slot > 0) {
+        if (inUse) {
+          inUseCount++;
+          console.log(`[TOKENLEFT] Token ${token.substring(0, 8)}: slot=${slot}, inuse=true (SKIPPED)`);
+        } else {
+          availableCount++;
+          totalSlots += slot;
+          console.log(`[TOKENLEFT] Token ${token.substring(0, 8)}: slot=${slot}, inuse=false (ADDED to total)`);
+        }
       }
     }
 
+    console.log(`[TOKENLEFT] Total slots: ${totalSlots}, In-use tokens: ${inUseCount}, Available tokens: ${availableCount}`);
     res.json({ totalSlots });
   } catch (err) {
-    console.error('Error reading token slots:', err.message);
+    console.error('[TOKENLEFT] Error reading token slots:', err.message);
     res.status(500).json({ error: 'Failed to calculate token slots' });
   }
 });
