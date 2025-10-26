@@ -226,6 +226,7 @@ app.post('/yud-ranyisi', securityMiddleware, async (req, res) => {
 
 app.post('/vm-loso', securityMiddleware, async (req, res) => {
   const { action } = req.body;
+  let selectedToken = null;
 
   if (![1, 2, 3].includes(parseInt(action))) {
     return res.status(400).json({ error: 'Invalid action. Must be 1, 2, or 3' });
@@ -246,15 +247,18 @@ app.post('/vm-loso', securityMiddleware, async (req, res) => {
       }
     }
 
-    const availableTokens = Object.keys(tokenData).filter(token =>
-      tokenData[token].slot >= 1 && tokenData[token].inuse === false
-    );
+    const availableTokens = Object.keys(tokenData).filter(token => {
+      const entry = tokenData[token] || {};
+      const slot = typeof entry.slot === 'number' ? entry.slot : 0;
+      const inUse = entry.inuse === true;
+      return slot >= 1 && !inUse;
+    });
 
     if (availableTokens.length === 0) {
       return res.status(400).json({ error: 'No available tokens' });
     }
 
-    const selectedToken = availableTokens[Math.floor(Math.random() * availableTokens.length)];
+    selectedToken = availableTokens[Math.floor(Math.random() * availableTokens.length)];
     tokenData[selectedToken].slot -= 1;
     tokenData[selectedToken].inuse = true;
 
@@ -276,9 +280,53 @@ app.post('/vm-loso', securityMiddleware, async (req, res) => {
     });
     vmProcess.unref();
 
+    const releaseToken = () => {
+      try {
+        if (!fs.existsSync(WORKER_TOKEN_FILE)) {
+          return;
+        }
+        const raw = fs.readFileSync(WORKER_TOKEN_FILE, 'utf8');
+        if (!raw) {
+          return;
+        }
+        const tokenData = JSON.parse(raw);
+        if (tokenData[selectedToken]) {
+          tokenData[selectedToken].inuse = false;
+          fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+          console.log(`Token ${selectedToken.substring(0, 8)}... released after process exit`);
+        }
+      } catch (releaseErr) {
+        console.error('Failed to release token after VM process exit:', releaseErr.message);
+      }
+    };
+
+    vmProcess.on('exit', releaseToken);
+    vmProcess.on('error', (err) => {
+      console.error('VM process error:', err.message);
+      releaseToken();
+    });
+
     console.log(`Started ${scriptFile} with token ${selectedToken} and route ${route}`);
     res.json({ logUrl: `/log/${route}` });
   } catch (error) {
+    if (selectedToken) {
+      try {
+        if (fs.existsSync(WORKER_TOKEN_FILE)) {
+          const raw = fs.readFileSync(WORKER_TOKEN_FILE, 'utf8');
+          const tokenData = raw ? JSON.parse(raw) : {};
+          if (tokenData[selectedToken]) {
+            tokenData[selectedToken].inuse = false;
+            tokenData[selectedToken].slot = Math.max(
+              typeof tokenData[selectedToken].slot === 'number' ? tokenData[selectedToken].slot + 1 : 1,
+              1
+            );
+            fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+          }
+        }
+      } catch (restoreErr) {
+        console.error('Failed to restore token after VM creation error:', restoreErr.message);
+      }
+    }
     console.error('Error while creating VM:', error.message);
     res.status(500).json({ error: 'Internal server error', details: error.message });
   } finally {

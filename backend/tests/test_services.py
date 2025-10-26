@@ -47,6 +47,9 @@ class DummyWorkerClient(WorkerClient):
     async def fetch_log(self, *, worker, route: str) -> str:
         return self.logs.get(route, "")
 
+    async def token_left(self, *, worker=None) -> int:  # type: ignore[override]
+        return 5
+
 
 class RecordingEventBus(SessionEventBus):
     def __init__(self) -> None:

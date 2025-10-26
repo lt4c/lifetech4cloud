@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from typing import Optional
+from typing import Optional, Sequence, Set
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -26,7 +26,12 @@ class WorkerSelector:
         )
         return {worker_id: count for worker_id, count in self.db.execute(stmt).all()}
 
-    def select_for_product(self, product_id) -> Optional[Worker]:
+    def _filter_excluded(self, workers: Sequence[Worker], exclude: Optional[Set] = None) -> list[Worker]:
+        if not exclude:
+            return list(workers)
+        return [worker for worker in workers if worker.id not in exclude]
+
+    def select_for_product(self, product_id, *, exclude: Optional[Set] = None) -> Optional[Worker]:
         stmt = (
             select(Worker)
             .join(vps_product_workers, Worker.id == vps_product_workers.c.worker_id)
@@ -34,14 +39,14 @@ class WorkerSelector:
             .where(Worker.status == "active")
             .order_by(Worker.created_at.desc())
         )
-        workers = list(self.db.scalars(stmt))
+        workers = self._filter_excluded(list(self.db.scalars(stmt)), exclude)
         if not workers:
             fallback_stmt = (
                 select(Worker)
                 .where(Worker.status == "active")
                 .order_by(Worker.created_at.desc())
             )
-            workers = list(self.db.scalars(fallback_stmt))
+            workers = self._filter_excluded(list(self.db.scalars(fallback_stmt)), exclude)
             if not workers:
                 return None
 

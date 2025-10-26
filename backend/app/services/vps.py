@@ -117,15 +117,7 @@ class VpsService:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="No worker available for product",
             )
-
-        # Check token availability on chosen worker before any deduction.
-        # Only block when an explicit 0 is reported. Unknown (-1) or positive continues.
-        tokens_left = await worker_client.token_left(worker=worker)
-        if tokens_left == 0:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Worker has no available tokens",
-            )
+        attempted_workers: set[UUID] = {worker.id}
 
         session, session_token = self._initial_session(
             user=user,
@@ -174,42 +166,81 @@ class VpsService:
             )
 
         action_to_use = worker_action or product.provision_action
-        try:
-            route, log_url = await worker_client.create_vm(worker=worker, action=action_to_use)
-        except HTTPException:
-            # bubble HTTP errors directly to client
-            raise
-        except Exception as exc:  # pragma: no cover - defensive
-            try:
-                session.status = "failed"
-                session.updated_at = datetime.now(timezone.utc)
-                wallet_service.adjust_balance(
-                    user,
-                    product.price_coins,
-                    entry_type="vps.refund",
-                    ref_id=session.id,
-                    meta={"reason": "worker_unreachable"},
-                )
-                self.db.add(session)
-                self.db.commit()
-            except Exception as refund_exc:
-                self.db.rollback()
+
+        MAX_WORKER_RETRIES = 3
+
+        def _switch_worker() -> Worker | None:
+            next_worker = selector.select_for_product(
+                product.id, exclude=attempted_workers
+            )
+            if not next_worker:
+                return None
+            attempted_workers.add(next_worker.id)
+            session.worker_id = next_worker.id
+            session.updated_at = datetime.now(timezone.utc)
+            self.db.add(session)
+            self.db.commit()
+            return next_worker
+
+        attempt = 0
+        while True:
+            attempt += 1
+            tokens_left = await worker_client.token_left(worker=worker)
+            if tokens_left == 0:
+                next_worker = _switch_worker()
+                if next_worker and attempt < MAX_WORKER_RETRIES:
+                    worker = next_worker
+                    continue
                 raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Unable to refund VPS purchase",
-                ) from refund_exc
-            if self.event_bus:
-                await self.event_bus.publish(
-                    session.id,
-                    {
-                        "event": "status.update",
-                        "data": {"status": session.status},
-                    },
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Worker has no available tokens",
                 )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Worker unreachable: {exc}",
-            ) from exc
+            try:
+                route, log_url = await worker_client.create_vm(worker=worker, action=action_to_use)
+                break
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, str) else None
+                if (
+                    attempt < MAX_WORKER_RETRIES
+                    and detail
+                    and "No available tokens" in detail
+                ):
+                    next_worker = _switch_worker()
+                    if next_worker:
+                        worker = next_worker
+                        continue
+                raise
+            except Exception as exc:  # pragma: no cover - defensive
+                try:
+                    session.status = "failed"
+                    session.updated_at = datetime.now(timezone.utc)
+                    wallet_service.adjust_balance(
+                        user,
+                        product.price_coins,
+                        entry_type="vps.refund",
+                        ref_id=session.id,
+                        meta={"reason": "worker_unreachable"},
+                    )
+                    self.db.add(session)
+                    self.db.commit()
+                except Exception as refund_exc:
+                    self.db.rollback()
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Unable to refund VPS purchase",
+                    ) from refund_exc
+                if self.event_bus:
+                    await self.event_bus.publish(
+                        session.id,
+                        {
+                            "event": "status.update",
+                            "data": {"status": session.status},
+                        },
+                    )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Worker unreachable: {exc}",
+                ) from exc
 
         session.worker_route = route
         session.log_url = log_url
