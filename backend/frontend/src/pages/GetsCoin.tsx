@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Loader2, Link as LinkIcon } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,42 @@ import { useAuth } from "@/context/AuthContext";
 type RegisterPhase = "idle" | "pending" | "done" | "error";
 
 const REGISTRATION_LINK = "https://learn.nvidia.com/join?auth=login&redirectPath=/my-learning";
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render?: (
+        container: HTMLElement | string,
+        options: Record<string, unknown>
+      ) => string | undefined;
+      reset?: (widgetId?: string) => void;
+      remove?: (widgetId?: string) => void;
+      execute?: (
+        siteKey: string,
+        options?: { action?: string; cData?: string }
+      ) => Promise<string>;
+    };
+  }
+}
+
+let turnstileLoader: Promise<void> | null = null;
+
+const ensureTurnstile = async (): Promise<void> => {
+  if (!TURNSTILE_SITE_KEY || typeof window === "undefined") return;
+  if (window.turnstile) return;
+  if (!turnstileLoader) {
+    turnstileLoader = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = `https://challenges.cloudflare.com/turnstile/v0/api.js?render=${TURNSTILE_SITE_KEY}`;
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Không tải được script Turnstile"));
+      document.head.appendChild(script);
+    });
+  }
+  await turnstileLoader;
+};
 
 const GetsCoin = () => {
   const { refresh } = useAuth();
@@ -22,6 +58,79 @@ const GetsCoin = () => {
   const [copied, setCopied] = useState(false);
   const [phase, setPhase] = useState<RegisterPhase>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [captchaError, setCaptchaError] = useState<string | null>(null);
+  const [captchaReady, setCaptchaReady] = useState(false);
+
+  const captchaContainerRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!TURNSTILE_SITE_KEY) {
+      setCaptchaError("Thiếu cấu hình Turnstile. Vui lòng báo cho quản trị viên.");
+      return;
+    }
+
+    ensureTurnstile()
+      .then(() => {
+        if (!isMounted) return;
+        const container = captchaContainerRef.current;
+        const turnstile = window.turnstile;
+        if (!container || !turnstile?.render) {
+          setCaptchaError("Turnstile chưa sẵn sàng, vui lòng thử lại.");
+          return;
+        }
+        const widgetId = turnstile.render(container, {
+          sitekey: TURNSTILE_SITE_KEY,
+          action: "register_worker",
+          callback: (token: string) => {
+            if (isMounted) {
+              setTurnstileToken(token);
+              setCaptchaError(null);
+            }
+          },
+          "error-callback": () => {
+            if (isMounted) {
+              setTurnstileToken(null);
+              setCaptchaError("Xác thực Turnstile thất bại, vui lòng thử lại.");
+            }
+          },
+          "expired-callback": () => {
+            if (isMounted) {
+              setTurnstileToken(null);
+              turnstile.reset?.(widgetId ?? undefined);
+            }
+          },
+        });
+        turnstileWidgetIdRef.current = widgetId ?? null;
+        setCaptchaReady(true);
+      })
+      .catch((error: unknown) => {
+        if (isMounted) {
+          console.error("turnstile-load", error);
+          setCaptchaError("Không thể tải Cloudflare Turnstile. Vui lòng tải lại trang.");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      const widgetId = turnstileWidgetIdRef.current;
+      if (widgetId && window.turnstile?.remove) {
+        window.turnstile.remove(widgetId);
+      }
+      turnstileWidgetIdRef.current = null;
+    };
+  }, []);
+
+  const resetTurnstile = useCallback(() => {
+    setTurnstileToken(null);
+    const widgetId = turnstileWidgetIdRef.current;
+    if (widgetId && window.turnstile?.reset) {
+      window.turnstile.reset(widgetId);
+    }
+  }, []);
 
   const walletQuery = useQuery<WalletBalance>({
     queryKey: ["wallet-balance"],
@@ -48,7 +157,8 @@ const GetsCoin = () => {
     setPassword("");
     setConfirmed(false);
     registerMutation.reset();
-  }, [registerMutation]);
+    resetTurnstile();
+  }, [registerMutation, resetTurnstile]);
 
   const handleSubmit = useCallback(async () => {
     const trimmedEmail = email.trim();
@@ -62,6 +172,10 @@ const GetsCoin = () => {
       setMessage("Bạn cần xác nhận đây không phải tài khoản chính của mình.");
       return;
     }
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      setMessage("Vui lòng hoàn thành Cloudflare Turnstile trước khi gửi.");
+      return;
+    }
 
     setPhase("pending");
     setMessage("Chúng tôi đang xác minh tài khoản, vui lòng đợi và kiểm tra email.");
@@ -71,7 +185,9 @@ const GetsCoin = () => {
         email: trimmedEmail,
         password: trimmedPassword,
         confirm: true,
+        turnstileToken,
       });
+      resetTurnstile();
 
       if (response?.ok) {
         setPhase("done");
@@ -84,6 +200,7 @@ const GetsCoin = () => {
       }
     } catch (error: unknown) {
       setPhase("error");
+      resetTurnstile();
       if (error instanceof Error) {
         setMessage(error.message);
         return;
@@ -103,7 +220,7 @@ const GetsCoin = () => {
         setMessage("Không thể xử lý yêu cầu. Vui lòng thử lại.");
       }
     }
-  }, [email, password, confirmed, registerMutation, refresh, walletQuery]);
+  }, [email, password, confirmed, registerMutation, refresh, walletQuery, turnstileToken, resetTurnstile]);
 
   return (
     <div className="space-y-6 sm:space-y-8 overflow-x-hidden">
@@ -189,6 +306,22 @@ const GetsCoin = () => {
                   </label>
                 </div>
 
+                <div className="space-y-2">
+                  <div
+                    ref={captchaContainerRef}
+                    className="flex items-center justify-center"
+                  />
+                  {captchaError && (
+                    <p className="text-xs text-destructive text-center">{captchaError}</p>
+                  )}
+                  {TURNSTILE_SITE_KEY && !captchaError && !captchaReady && (
+                    <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Đang tải captcha...</span>
+                    </p>
+                  )}
+                </div>
+
                 {message && (
                   <div className="flex items-center gap-2 text-sm text-destructive">
                     <AlertCircle className="h-4 w-4" />
@@ -196,7 +329,14 @@ const GetsCoin = () => {
                   </div>
                 )}
 
-                <Button className="w-full h-11 text-base" onClick={handleSubmit}>
+                <Button
+                  className="w-full h-11 text-base"
+                  onClick={handleSubmit}
+                  disabled={
+                    phase === "pending" ||
+                    (TURNSTILE_SITE_KEY ? !turnstileToken || Boolean(captchaError) : false)
+                  }
+                >
                   Gửi thông tin
                 </Button>
               </>

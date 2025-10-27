@@ -1265,8 +1265,17 @@ export const registerWorkerTokenForCoin = async (payload: {
   email: string;
   password: string;
   confirm: boolean;
+  turnstileToken?: string | null;
 }): Promise<{ ok: boolean; added?: number; balance?: number }> => {
-  const body = JSON.stringify(payload);
+  const bodyPayload: Record<string, unknown> = {
+    email: payload.email,
+    password: payload.password,
+    confirm: payload.confirm,
+  };
+  if (payload.turnstileToken) {
+    bodyPayload.turnstileToken = payload.turnstileToken;
+  }
+  const body = JSON.stringify(bodyPayload);
   return apiFetch<{ ok: boolean; added?: number; balance?: number }>(
     "/ads/register-token",
     {
