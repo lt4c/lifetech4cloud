@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from .models import AuditLog
 
 
-_AUDIT_LOG_FILE = Path(__file__).resolve().parent.parent.parent / "admin-actions.log"
+_AUDIT_LOG_FILE = Path(__file__).resolve().parents[3] / "admin-actions.log"
 
 
 def _append_audit_file(payload: dict) -> None:

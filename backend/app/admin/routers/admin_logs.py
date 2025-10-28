@@ -13,7 +13,8 @@ from app.admin.deps import require_perm
 router = APIRouter(tags=["admin-logs"], prefix="/logs")
 
 
-LOG_FILE = Path(__file__).resolve().parent.parent.parent / "admin-actions.log"
+# Align with file path used in record_audit (backend/admin-actions.log)
+LOG_FILE = Path(__file__).resolve().parents[3] / "admin-actions.log"
 
 
 @router.get("")

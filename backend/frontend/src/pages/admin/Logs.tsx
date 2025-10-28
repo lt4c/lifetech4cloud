@@ -9,10 +9,11 @@ import { Loader2 } from "lucide-react";
 export default function AdminLogs() {
   const [limit, setLimit] = useState(500);
   const [query, setQuery] = useState("");
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, refetch, isFetching, error } = useQuery({
     queryKey: ["admin-logs", limit],
     queryFn: () => fetchAdminLogs(limit),
     staleTime: 5_000,
+    retry: 1,
   });
 
   useEffect(() => {
@@ -61,6 +62,10 @@ export default function AdminLogs() {
           {isLoading ? (
             <div className="flex items-center justify-center py-12 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" /> Đang tải logs...
+            </div>
+          ) : error ? (
+            <div className="rounded border border-border/40 bg-destructive/10 p-3 text-sm">
+              Không tải được logs. Vui lòng thử lại sau.
             </div>
           ) : (
             <pre className="max-h-[70vh] overflow-auto rounded-md border border-border/40 bg-background/60 p-3 text-xs">

@@ -230,7 +230,7 @@ export default function Workers() {
       }
       if (tokenWorker?.id === workerId) {
         setTokenWorker(null);
-        setTokenForm({ email: "", password: "" });
+        setTokenForm({ token: "", slot: 3, mail: "" });
       }
     },
     onError: (error: unknown) => {
@@ -334,12 +334,14 @@ export default function Workers() {
   const handleTokenSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!tokenWorker) return;
-    const email = tokenForm.email.trim();
-    if (!email || !tokenForm.password) {
-      toast("Cần nhập email và mật khẩu.");
+    const token = tokenForm.token.trim();
+    const mail = tokenForm.mail.trim();
+    const slot = Math.max(1, Number(tokenForm.slot) || 1);
+    if (!token || !mail) {
+      toast("Cần nhập token và mail.");
       return;
     }
-    tokenMutation.mutate({ workerId: tokenWorker.id, email, password: tokenForm.password });
+    tokenMutation.mutate({ workerId: tokenWorker.id, token, slot, mail });
   };
 
   const handleCopy = async (value: string) => {
@@ -444,9 +446,9 @@ export default function Workers() {
                         setTokenWorker(worker);
                         setTokenForm({ token: "", slot: 3, mail: "" });
                       }}
-                      disabled={tokenMutation.isLoading && tokenWorker?.id === worker.id}
+                      disabled={tokenMutation.status === "pending" && tokenWorker?.id === worker.id}
                     >
-                      {tokenMutation.isLoading && tokenWorker?.id === worker.id ? (
+                      {tokenMutation.status === "pending" && tokenWorker?.id === worker.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <KeyRound className="w-4 h-4" />
@@ -468,10 +470,10 @@ export default function Workers() {
                       className="gap-2"
                       onClick={() => handleToggleStatus(worker)}
                       disabled={
-                        disableMutation.isLoading ||
-                        updateMutation.isLoading ||
-                        restartMutation.isLoading ||
-                        deleteMutation.isLoading
+                        disableMutation.status === "pending" ||
+                        updateMutation.status === "pending" ||
+                        restartMutation.status === "pending" ||
+                        deleteMutation.status === "pending"
                       }
                     >
                       {worker.status === "active" ? (
@@ -491,9 +493,9 @@ export default function Workers() {
                       variant="outline"
                       className="gap-2"
                       onClick={() => handleRestart(worker)}
-                      disabled={restartMutation.isLoading || deleteMutation.isLoading}
+                      disabled={restartMutation.status === "pending" || deleteMutation.status === "pending"}
                     >
-                      {restartMutation.isLoading && restartTarget === worker.id ? (
+                      {restartMutation.status === "pending" && restartTarget === worker.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <RotateCcw className="w-4 h-4" />
@@ -506,12 +508,16 @@ export default function Workers() {
                       className="gap-2"
                       onClick={() => handleDelete(worker)}
                       disabled={
-                        worker.active_sessions > 0 ||
-                        deleteMutation.isLoading ||
-                        restartMutation.isLoading
+                        deleteMutation.status === "pending" ||
+                        restartMutation.status === "pending"
+                      }
+                      title={
+                        worker.active_sessions > 0
+                          ? "Cần khởi động lại để dừng các phiên trước khi xóa."
+                          : undefined
                       }
                     >
-                      {deleteMutation.isLoading && deleteTarget === worker.id ? (
+                      {deleteMutation.status === "pending" && deleteTarget === worker.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <Trash2 className="w-4 h-4" />
@@ -530,7 +536,7 @@ export default function Workers() {
         onOpenChange={(open) => {
           if (!open) {
             setTokenWorker(null);
-            setTokenForm({ email: "", password: "" });
+            setTokenForm({ token: "", slot: 3, mail: "" });
           }
         }}
       >
@@ -574,8 +580,8 @@ export default function Workers() {
               <Button type="button" variant="ghost" onClick={() => setTokenWorker(null)}>
                 Hủy
               </Button>
-              <Button type="submit" className="gap-2" disabled={tokenMutation.isLoading}>
-                {tokenMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Gửi yêu cầu"}
+              <Button type="submit" className="gap-2" disabled={tokenMutation.status === "pending"}>
+                {tokenMutation.status === "pending" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Gửi yêu cầu"}
               </Button>
             </DialogFooter>
           </form>
@@ -629,8 +635,8 @@ export default function Workers() {
               <Button type="button" variant="ghost" onClick={() => setRegisterOpen(false)}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={registerMutation.isLoading}>
-                {registerMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Đăng ký"}
+              <Button type="submit" disabled={registerMutation.status === "pending"}>
+                {registerMutation.status === "pending" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Đăng ký"}
               </Button>
             </DialogFooter>
           </form>
@@ -679,8 +685,8 @@ export default function Workers() {
               <Button type="button" variant="ghost" onClick={() => setEditWorker(null)}>
                 Hủy
               </Button>
-              <Button type="submit" disabled={updateMutation.isLoading}>
-                {updateMutation.isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Lưu thay đổi"}
+              <Button type="submit" disabled={updateMutation.status === "pending"}>
+                {updateMutation.status === "pending" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Lưu thay đổi"}
               </Button>
             </DialogFooter>
           </form>
@@ -695,13 +701,13 @@ export default function Workers() {
               Xem các route đang hoạt động do worker cung cấp. Giá trị dựa theo <code>Workers_Docs.md</code>.
             </DialogDescription>
           </DialogHeader>
-          {detailQuery.isLoading && (
+          {detailQuery.status === "pending" && (
             <div className="flex items-center justify-center py-12 text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin mr-2" />
               Đang tải worker...
             </div>
           )}
-          {!detailQuery.isLoading && detail && (
+          {detailQuery.status !== "pending" && detail && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold">{detail.name || "Worker chưa đặt tên"}</h3>
@@ -732,9 +738,9 @@ export default function Workers() {
                       setHealthStatus(null);
                       healthMutation.mutate(detailWorkerId);
                     }}
-                    disabled={healthMutation.isLoading}
+                    disabled={healthMutation.status === "pending"}
                   >
-                    {healthMutation.isLoading ? (
+                    {healthMutation.status === "pending" ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <RefreshCw className="w-4 h-4" />
