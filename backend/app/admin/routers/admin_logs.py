@@ -10,15 +10,17 @@ from fastapi.responses import JSONResponse
 from app.admin.deps import require_perm
 
 
-router = APIRouter(tags=["admin-logs"], prefix="/api/v1/admin/logs")
+router = APIRouter(tags=["admin-logs"], prefix="/logs")
 
 
 LOG_FILE = Path(__file__).resolve().parent.parent.parent / "admin-actions.log"
 
 
 @router.get("")
-async def list_admin_logs(limit: int = Query(default=500, ge=1, le=5000)) -> JSONResponse:
-    _ = await require_perm("role:read")  # permission checked by dependency
+async def list_admin_logs(
+    limit: int = Query(default=500, ge=1, le=5000),
+    _: object = Depends(require_perm("role:read")),
+) -> JSONResponse:
     if not LOG_FILE.exists():
         return JSONResponse({"items": []})
     try:
@@ -54,5 +56,21 @@ async def list_admin_logs(limit: int = Query(default=500, ge=1, le=5000)) -> JSO
         return JSONResponse({"items": items})
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"unable_to_read_logs: {exc}")
+
+
+@router.post("")
+async def append_admin_log(
+    payload: dict,
+    _: object = Depends(require_perm("role:update")),
+) -> JSONResponse:
+    try:
+        import json
+        os.makedirs(LOG_FILE.parent, exist_ok=True)
+        record = {"ts": __import__("datetime").datetime.utcnow().isoformat(timespec="seconds") + "Z", **payload}
+        with open(LOG_FILE, "a", encoding="utf-8") as fp:
+            fp.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
+        return JSONResponse({"success": True})
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"unable_to_write_log: {exc}")
 
 
