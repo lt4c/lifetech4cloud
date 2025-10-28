@@ -1272,6 +1272,15 @@ export const updateAdminVersionInfo = async (payload: {
   });
 };
 
+/* Admin Logs */
+export const fetchAdminLogs = async (
+  limit = 500,
+): Promise<{ items: Array<Record<string, unknown>> }> => {
+  return apiFetch<{ items: Array<Record<string, unknown>> }>(
+    `/api/v1/admin/logs?limit=${encodeURIComponent(String(limit))}`,
+  );
+};
+
 // Earn: Register worker token for coins (+15 on success)
 export const registerWorkerTokenForCoin = async (payload: {
   email: string;

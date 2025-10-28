@@ -26,6 +26,7 @@ import Workers from "@/pages/admin/Workers";
 import VpsProductsAdmin from "@/pages/admin/VpsProducts";
 import GiftcodesAdmin from "@/pages/admin/Giftcodes";
 import AdminAnnouncements from "@/pages/admin/Announcements";
+import AdminLogs from "@/pages/admin/Logs";
 import Analytics from "@/pages/admin/Analytics";
 import Settings from "@/pages/admin/Settings";
 import NotFound from "@/pages/NotFound";
@@ -212,6 +213,7 @@ const AppRoutes = () => (
     <Route path="/admin/vps-products" element={<AdminRoute><VpsProductsAdmin /></AdminRoute>} />
     <Route path="/admin/workers" element={<AdminRoute><Workers /></AdminRoute>} />
     <Route path="/admin/announcements" element={<AdminRoute><AdminAnnouncements /></AdminRoute>} />
+    <Route path="/admin/logs" element={<AdminRoute><AdminLogs /></AdminRoute>} />
     <Route path="/admin/analytics" element={<AdminRoute><Analytics /></AdminRoute>} />
     <Route path="/admin/settings" element={<AdminRoute><Settings /></AdminRoute>} />
     <Route path="*" element={<NotFound />} />

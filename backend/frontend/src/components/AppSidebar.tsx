@@ -38,6 +38,7 @@ const adminItems: NavItem[] = [
   { title: "Sản phẩm VPS", url: "/admin/vps-products", icon: Package },
   { title: "Giftcode", url: "/admin/giftcodes", icon: Gift },
   { title: "Quản lý Workers", url: "/admin/workers", icon: Zap },
+  { title: "Logs", url: "/admin/logs", icon: Settings },
   { title: "Phân tích", url: "/admin/analytics", icon: TrendingUp },
   { title: "Cài đặt", url: "/admin/settings", icon: Settings },
 ];
