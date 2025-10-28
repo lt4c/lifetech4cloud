@@ -1322,3 +1322,22 @@ export const registerWorkerTokenForCoin = async (payload: {
     },
   );
 };
+
+// Ads: Fetch available workers for GetsCoin registration
+export const fetchAdsAvailableWorkers = async (): Promise<{
+  workers: Array<{
+    id: string;
+    name: string | null;
+    tokens_left: number;
+    available: boolean;
+  }>;
+}> => {
+  return apiFetch<{
+    workers: Array<{
+      id: string;
+      name: string | null;
+      tokens_left: number;
+      available: boolean;
+    }>;
+  }>("/ads/workers/available");
+};

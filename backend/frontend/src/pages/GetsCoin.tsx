@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { fetchWalletBalance, registerWorkerTokenForCoin } from "@/lib/api-client";
+import { fetchWalletBalance, registerWorkerTokenForCoin, fetchAdsAvailableWorkers } from "@/lib/api-client";
 import type { WalletBalance } from "@/lib/types";
 import { useAuth } from "@/context/AuthContext";
 import { useTurnstile } from "@/hooks/useTurnstile";
@@ -46,13 +46,13 @@ const GetsCoin = () => {
     const fetchAvailableWorkers = async () => {
       setLoadingWorkers(true);
       try {
-        const response = await fetch('/ads/workers/available');
-        if (response.ok) {
-          const data = await response.json();
-          setWorkers(data.workers || []);
-          if (data.workers?.length > 0) {
-            setSelectedWorkerId(data.workers[0].id);
-          }
+        const data = await fetchAdsAvailableWorkers();
+        const list = Array.isArray(data?.workers) ? data.workers : [];
+        setWorkers(list);
+        if (list.length > 0) {
+          setSelectedWorkerId(list[0].id);
+        } else {
+          setSelectedWorkerId(null);
         }
       } catch (error) {
         console.error('Error fetching workers:', error);
@@ -60,7 +60,7 @@ const GetsCoin = () => {
         setLoadingWorkers(false);
       }
     };
-    
+
     fetchAvailableWorkers();
   }, []);
 
