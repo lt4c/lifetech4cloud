@@ -144,6 +144,7 @@ async def enable_worker(
 async def remove_worker(
     request: Request,
     worker_id: UUID,
+    force: bool = False,
     actor: User = Depends(require_perm("worker:delete")),
     db: Session = Depends(get_db),
 ) -> None:
@@ -151,8 +152,17 @@ async def remove_worker(
     context = _audit_context(request, actor)
     # Ensure no active sessions; if any lingering sessions with non-active status, force mark deleted
     active_sessions = service.list_active_sessions(worker_id)
-    if active_sessions:
+    if active_sessions and not force:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Worker still has active sessions.")
+    
+    # If force=True, mark all active sessions as deleted
+    if active_sessions and force:
+        vps_service = VpsService(db)
+        for session in active_sessions:
+            session.status = "deleted"
+            db.add(session)
+        db.commit()
+    
     service.delete_worker(worker_id, context=context)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

@@ -322,12 +322,15 @@ export default function Workers() {
   };
 
   const handleDelete = (worker: WorkerInfo) => {
-    if (worker.active_sessions > 0 && restartMutation.status !== "error") {
-      toast("Không thể xóa khi worker còn phiên đang chạy. Vui lòng khởi động lại trước.");
+    if (worker.active_sessions > 0) {
+      if (window.confirm("Worker still has active sessions. Still delete?")) {
+        deleteMutation.mutate({ id: worker.id, force: true });
+        return;
+      }
       return;
     }
     if (window.confirm("Xóa worker này? Hành động không thể hoàn tác.")) {
-      deleteMutation.mutate(worker.id);
+      deleteMutation.mutate({ id: worker.id, force: false });
     }
   };
 

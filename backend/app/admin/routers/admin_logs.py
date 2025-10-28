@@ -22,8 +22,26 @@ async def list_admin_logs(
     limit: int = Query(default=500, ge=1, le=5000),
     _: object = Depends(require_perm("role:read")),
 ) -> JSONResponse:
+    # Tạo file log nếu chưa tồn tại
     if not LOG_FILE.exists():
-        return JSONResponse({"items": []})
+        try:
+            os.makedirs(LOG_FILE.parent, exist_ok=True)
+            with open(LOG_FILE, "w", encoding="utf-8") as fp:
+                # Tạo một log mẫu để đảm bảo file không trống
+                import json
+                from datetime import datetime
+                sample_log = {
+                    "ts": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                    "action": "system",
+                    "target_type": "log",
+                    "target_id": None,
+                    "message": "Log file initialized"
+                }
+                fp.write(json.dumps(sample_log, ensure_ascii=False, separators=(",", ":")) + "\n")
+        except Exception:
+            # Nếu không thể tạo file, trả về danh sách trống
+            return JSONResponse({"items": []})
+    
     try:
         # Tail last N lines efficiently
         lines: List[str] = []
@@ -50,7 +68,6 @@ async def list_admin_logs(
         for raw in reversed(lines):
             try:
                 import json
-
                 items.append(json.loads(raw))
             except Exception:
                 continue

@@ -939,8 +939,8 @@ export const restartWorker = async (id: string): Promise<WorkerRestartResponse> 
   });
 };
 
-export const deleteWorker = async (id: string): Promise<void> => {
-  await apiFetch<void>(`/api/v1/admin/workers/${id}`, {
+export const deleteWorker = async ({ id, force = false }: { id: string; force?: boolean }): Promise<void> => {
+  await apiFetch<void>(`/api/v1/admin/workers/${id}?force=${force}`, {
     method: "DELETE",
   });
 };

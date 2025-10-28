@@ -23,9 +23,13 @@ def _append_audit_file(payload: dict) -> None:
         os.makedirs(_AUDIT_LOG_FILE.parent, exist_ok=True)
         with open(_AUDIT_LOG_FILE, "a", encoding="utf-8") as fp:
             fp.write(line + "\n")
-    except Exception:
+            # Đảm bảo dữ liệu được ghi ngay lập tức vào đĩa
+            fp.flush()
+            os.fsync(fp.fileno())
+    except Exception as e:
         # Best effort: file logging must not break request flow
-        pass
+        import logging
+        logging.error(f"Failed to write audit log: {e}")
 
 
 @dataclass(slots=True)
