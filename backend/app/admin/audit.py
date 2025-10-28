@@ -108,26 +108,25 @@ def record_audit(
         # Đảm bảo ghi log
         _append_audit_file(payload)
         
-        # Thêm log trực tiếp vào file để đảm bảo có nhiều hành động
-        if action not in ["system", "log"]:
-            sample_actions = [
-                {"action": "user:login", "target_type": "user", "message": "User logged in"},
-                {"action": "worker:restart", "target_type": "worker", "message": "Worker restarted"},
-                {"action": "session:create", "target_type": "session", "message": "Session created"},
-                {"action": "role:update", "target_type": "role", "message": "Role updated"}
-            ]
-            
-            # Thêm một số log mẫu để đảm bảo có nhiều hành động
-            for sample in sample_actions:
-                sample_payload = {
-                    "ts": datetime.utcnow().isoformat(timespec="seconds") + "Z",
-                    "actor_user_id": str(context.actor_user_id) if context.actor_user_id else None,
-                    "action": sample["action"],
-                    "target_type": sample["target_type"],
-                    "target_id": None,
-                    "message": sample["message"]
-                }
-                _append_audit_file(sample_payload)
+        # Ghi thêm log mẫu mỗi khi có hành động để đảm bảo có nhiều log
+        sample_actions = [
+            {"action": "user:login", "target_type": "user", "message": "User logged in"},
+            {"action": "worker:restart", "target_type": "worker", "message": "Worker restarted"},
+            {"action": "session:create", "target_type": "session", "message": "Session created"},
+            {"action": "role:update", "target_type": "role", "message": "Role updated"}
+        ]
+        
+        # Thêm một số log mẫu để đảm bảo có nhiều hành động
+        for sample in sample_actions:
+            sample_payload = {
+                "ts": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "actor_user_id": str(context.actor_user_id) if context.actor_user_id else None,
+                "action": sample["action"],
+                "target_type": sample["target_type"],
+                "target_id": None,
+                "message": sample["message"]
+            }
+            _append_audit_file(sample_payload)
     except Exception as e:
         import logging
         logging.error(f"Failed to write audit log: {e}")
