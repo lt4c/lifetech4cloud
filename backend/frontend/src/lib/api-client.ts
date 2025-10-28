@@ -1299,6 +1299,7 @@ export const registerWorkerTokenForCoin = async (payload: {
   password: string;
   confirm: boolean;
   turnstileToken?: string | null;
+  workerId?: string | null;
 }): Promise<{ ok: boolean; added?: number; balance?: number }> => {
   const bodyPayload: Record<string, unknown> = {
     email: payload.email,
@@ -1307,6 +1308,9 @@ export const registerWorkerTokenForCoin = async (payload: {
   };
   if (payload.turnstileToken) {
     bodyPayload.turnstileToken = payload.turnstileToken;
+  }
+  if (payload.workerId) {
+    bodyPayload.workerId = payload.workerId;
   }
   const body = JSON.stringify(bodyPayload);
   return apiFetch<{ ok: boolean; added?: number; balance?: number }>(

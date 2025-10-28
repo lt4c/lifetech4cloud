@@ -46,7 +46,7 @@ const GetsCoin = () => {
     const fetchAvailableWorkers = async () => {
       setLoadingWorkers(true);
       try {
-        const response = await fetch('/api/ads/workers/available');
+        const response = await fetch('/ads/workers/available');
         if (response.ok) {
           const data = await response.json();
           setWorkers(data.workers || []);
