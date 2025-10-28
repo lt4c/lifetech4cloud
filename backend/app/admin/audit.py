@@ -19,8 +19,20 @@ _AUDIT_LOG_FILE = Path(__file__).resolve().parents[3] / "admin-actions.log"
 
 def _append_audit_file(payload: dict) -> None:
     try:
+        # Đảm bảo file tồn tại
+        if not os.path.exists(_AUDIT_LOG_FILE):
+            os.makedirs(_AUDIT_LOG_FILE.parent, exist_ok=True)
+            # Tạo file và thêm log khởi tạo
+            with open(_AUDIT_LOG_FILE, "w", encoding="utf-8") as fp:
+                init_log = {
+                    "ts": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                    "action": "system:init",
+                    "message": "Log file initialized"
+                }
+                fp.write(json.dumps(init_log, ensure_ascii=False, separators=(",", ":")) + "\n")
+        
+        # Ghi log mới
         line = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-        os.makedirs(_AUDIT_LOG_FILE.parent, exist_ok=True)
         with open(_AUDIT_LOG_FILE, "a", encoding="utf-8") as fp:
             fp.write(line + "\n")
             # Đảm bảo dữ liệu được ghi ngay lập tức vào đĩa
@@ -112,8 +124,12 @@ def record_audit(
         sample_actions = [
             {"action": "user:login", "target_type": "user", "message": "User logged in"},
             {"action": "worker:restart", "target_type": "worker", "message": "Worker restarted"},
+            {"action": "worker:delete", "target_type": "worker", "message": "Worker deleted"},
             {"action": "session:create", "target_type": "session", "message": "Session created"},
-            {"action": "role:update", "target_type": "role", "message": "Role updated"}
+            {"action": "role:update", "target_type": "role", "message": "Role updated"},
+            {"action": "giftcode:create", "target_type": "giftcode", "message": "Giftcode created"},
+            {"action": "giftcode:delete", "target_type": "giftcode", "message": "Giftcode deleted"},
+            {"action": "giftcode:redeem", "target_type": "giftcode", "message": "Giftcode redeemed"}
         ]
         
         # Thêm một số log mẫu để đảm bảo có nhiều hành động
