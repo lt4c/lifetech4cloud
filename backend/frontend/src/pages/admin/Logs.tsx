@@ -17,8 +17,8 @@ export default function AdminLogs() {
   });
 
   useEffect(() => {
-    // auto refresh after changing limit
-  }, [limit]);
+    refetch();
+  }, [limit, refetch]);
 
   const items = data?.items ?? [];
   const filtered = useMemo(() => {

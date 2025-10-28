@@ -322,7 +322,7 @@ export default function Workers() {
   };
 
   const handleDelete = (worker: WorkerInfo) => {
-    if (worker.active_sessions > 0) {
+    if (worker.active_sessions > 0 && restartMutation.status !== "error") {
       toast("Không thể xóa khi worker còn phiên đang chạy. Vui lòng khởi động lại trước.");
       return;
     }
