@@ -30,6 +30,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -321,16 +331,17 @@ export default function Workers() {
     }
   };
 
+  // State để quản lý dialog xóa worker
+  const [deleteConfirmWorker, setDeleteConfirmWorker] = React.useState<WorkerInfo | null>(null);
+  
   const handleDelete = (worker: WorkerInfo) => {
-    if (worker.active_sessions > 0) {
-      if (window.confirm("Worker still has active sessions. Still delete?")) {
-        deleteMutation.mutate({ id: worker.id, force: true });
-        return;
-      }
-      return;
-    }
-    if (window.confirm("Xóa worker này? Hành động không thể hoàn tác.")) {
-      deleteMutation.mutate({ id: worker.id, force: false });
+    setDeleteConfirmWorker(worker);
+  };
+  
+  const confirmDelete = (force: boolean) => {
+    if (deleteConfirmWorker) {
+      deleteMutation.mutate({ id: deleteConfirmWorker.id, force });
+      setDeleteConfirmWorker(null);
     }
   };
 
@@ -773,6 +784,29 @@ export default function Workers() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Dialog xác nhận xóa worker */}
+      <AlertDialog open={Boolean(deleteConfirmWorker)} onOpenChange={(open) => !open && setDeleteConfirmWorker(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xóa worker</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirmWorker?.active_sessions ? 
+                "Worker vẫn còn phiên hoạt động. Vẫn xóa?" : 
+                "Xóa worker này? Hành động không thể hoàn tác."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => confirmDelete(deleteConfirmWorker?.active_sessions ? true : false)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Xóa"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
