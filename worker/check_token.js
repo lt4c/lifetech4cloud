@@ -50,8 +50,8 @@ async function checkToken(token) {
     } catch (_) {}
 
     // 2) Chờ ~10s giống đoạn "checking" trong linux.js
-    console.log('[CHECK_TOKEN] wait 10s before check_task');
-    await sleep(10000);
+    console.log('[CHECK_TOKEN] wait ~2s before check_task');
+    await sleep(2000);
     console.log('[CHECK_TOKEN] wait done');
 
     // 3) Thử đọc usage, nhưng KHÔNG coi HTTP 400 là thất bại kiểm tra
