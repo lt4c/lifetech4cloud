@@ -1009,10 +1009,10 @@ const SessionLogPanel = ({ session, query, logText, onOpenFullLog }: SessionLogP
         ? query.error.message
         : query.error instanceof Error
           ? query.error.message
-          : "Không thể tải nhật ký.";
+          : "Không thể tải nhật ký. Phải chịu";
     content = <p className="text-xs text-destructive">{message}</p>;
   } else {
-    content = <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">{logText || "(nhật ký trống)"}</pre>;
+    content = <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed">{logText || "chờ xíu để load nghe"}</pre>;
   }
 
   return (
