@@ -169,6 +169,8 @@ async function performNvidiaLogin(email, password) {
 // Login endpoint for worker tokens
 app.post('/yud-ranyisi', securityMiddleware, async (req, res) => {
   const { email, password } = req.body;
+  console.log('new worker login request for:', email);
+
 
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password required' });
