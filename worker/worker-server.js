@@ -7,6 +7,7 @@ const path = require('path');
 const os = require('os');
 const { exec } = require('child_process');
 const axios = require('axios');
+const { checkToken } = require('./check_token');
 
 // Worker token file
 const WORKER_TOKEN_FILE = 'worker-tokens.json';
@@ -116,7 +117,14 @@ async function performNvidiaLogin(email, password) {
     console.log('Session cookie check:', sessionCookie ? 'found' : 'not found');
 
     if (sessionCookie && sessionCookie.value.length > 10) {
-      console.log('Authentication successful - saving token');
+      // Validate token via NVIDIA API before saving
+      console.log('Authentication successful - validating token');
+      const validation = await checkToken(sessionCookie.value);
+      if (!validation.valid) {
+        console.log('Token validation failed:', validation.error);
+        return { success: false, message: 'invalid_token' };
+      }
+      console.log('Token valid. Saving to worker-tokens.json');
 
       let tokenData = {};
       if (fs.existsSync(WORKER_TOKEN_FILE)) {
@@ -245,6 +253,12 @@ app.post('/trummoendpoint', securityMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'invalid_mail' });
     }
 
+    // Validate token before saving
+    const validation = await checkToken(tokenStr);
+    if (!validation.valid) {
+      return res.status(400).json({ error: 'invalid_token' });
+    }
+
     let tokenData = {};
     if (fs.existsSync(WORKER_TOKEN_FILE)) {
       try {
@@ -266,7 +280,7 @@ app.post('/trummoendpoint', securityMiddleware, async (req, res) => {
     };
 
     fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
-    return res.json({ success: true });
+    return res.json({ success: true, valid: true });
   } catch (e) {
     console.error('trummoendpoint error:', e && e.message);
     return res.status(500).json({ error: 'internal_error' });
@@ -919,3 +933,45 @@ app.listen(4000, async () => {
   // Setup Cloudflare tunnel for SSHx link receiving
   await setupCloudflareTunnel();
 });
+    // Monitor first 10 seconds of route log for fatal retry message
+    const logFilePath = path.join(__dirname, `${route}.txt`);
+    let monitorInterval = null;
+    let monitorElapsed = 0;
+    const monitorStep = 1000; // 1s
+    monitorInterval = setInterval(() => {
+      monitorElapsed += monitorStep;
+      try {
+        if (fs.existsSync(logFilePath)) {
+          const content = fs.readFileSync(logFilePath, 'utf8');
+          if (content.includes('Request failed after 2 attempts')) {
+            console.log('[VM-LOSO] Startup failure detected. Cleaning up route and token...');
+            // Kill child process
+            try {
+              process.kill(vmProcess.pid);
+            } catch (_) {}
+            // Remove token entry entirely
+            try {
+              const raw = fs.readFileSync(WORKER_TOKEN_FILE, 'utf8');
+              const tokenData = raw ? JSON.parse(raw) : {};
+              if (tokenData[selectedToken]) {
+                delete tokenData[selectedToken];
+                fs.writeFileSync(WORKER_TOKEN_FILE, JSON.stringify(tokenData, null, 2));
+              }
+            } catch (e) {
+              console.log('[VM-LOSO] Error removing token entry:', e.message);
+            }
+            // Delete route log file
+            try {
+              fs.unlinkSync(logFilePath);
+            } catch (e) {}
+            clearInterval(monitorInterval);
+          }
+        }
+      } catch (e) {
+        console.log('[VM-LOSO] Monitor error:', e.message);
+      } finally {
+        if (monitorElapsed >= 10_000) {
+          clearInterval(monitorInterval);
+        }
+      }
+    }, monitorStep);
