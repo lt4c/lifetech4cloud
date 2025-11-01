@@ -145,24 +145,32 @@ async def check_availability(
         selector = WorkerSelector(db)
         # Lấy tất cả worker cho sản phẩm thay vì chỉ một worker
         workers = selector.get_all_workers_for_product(product.id)
+        print(f"[DEBUG] Product {product.name} (ID: {product.id}) - Found {len(workers)} workers")
+        for w in workers:
+            print(f"[DEBUG]   - Worker: {w.name} (ID: {w.id}, Status: {w.status})")
+        
         if not workers:
+            print(f"[DEBUG] No workers found for product {product.name}")
             return JSONResponse({"available": False, "reason": "No worker available", "workers": []})
 
         available_workers = []
         total_tokens = 0
         for worker in workers:
+            print(f"[DEBUG] Checking tokens for worker {worker.name}...")
             try:
                 tokens_left = await worker_client.token_left(worker=worker)
                 worker_available = tokens_left > 0
                 if worker_available:
                     total_tokens += tokens_left
+                print(f"[DEBUG]   - Worker {worker.name}: {tokens_left} tokens, available: {worker_available}")
                 available_workers.append({
                     "id": str(worker.id),
                     "name": worker.name,
                     "tokens_left": tokens_left,
                     "available": worker_available
                 })
-            except Exception:
+            except Exception as e:
+                print(f"[DEBUG]   - Worker {worker.name}: Exception occurred: {e}")
                 available_workers.append({
                     "id": str(worker.id),
                     "name": worker.name,
@@ -183,8 +191,10 @@ async def check_availability(
         # Check general availability across all active products
         service = VpsService(db)
         products = service.list_products(active_only=True)
+        print(f"[DEBUG] Checking availability for all products - Found {len(products)} active products")
 
         if not products:
+            print("[DEBUG] No active products found")
             return JSONResponse({"available": False, "reason": "No active products"})
 
         selector = WorkerSelector(db)
@@ -194,8 +204,10 @@ async def check_availability(
 
         for product in products:
             workers = selector.get_all_workers_for_product(product.id)
+            print(f"[DEBUG] Product {product.name} - Found {len(workers)} workers")
             for worker in workers:
                 if worker:
+                    print(f"[DEBUG] Checking tokens for worker {worker.name} (Product: {product.name})...")
                     try:
                         tokens_left = await worker_client.token_left(worker=worker)
                         worker_available = tokens_left > 0
@@ -203,6 +215,7 @@ async def check_availability(
                             total_tokens += tokens_left
                             if str(product.id) not in available_products:
                                 available_products.append(str(product.id))
+                        print(f"[DEBUG]   - Worker {worker.name}: {tokens_left} tokens, available: {worker_available}")
                         all_workers.append({
                             "id": str(worker.id),
                             "name": worker.name,
@@ -210,7 +223,8 @@ async def check_availability(
                             "tokens_left": tokens_left,
                             "available": worker_available
                         })
-                    except Exception:
+                    except Exception as e:
+                        print(f"[DEBUG]   - Worker {worker.name}: Exception occurred: {e}")
                         all_workers.append({
                             "id": str(worker.id),
                             "name": worker.name,

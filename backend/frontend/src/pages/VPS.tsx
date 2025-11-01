@@ -471,12 +471,12 @@ const isLaunchDisabled = !selectedProduct ||
             }
           }}
         >
-          <DialogContent className="glass-panel max-w-[95vw] sm:max-w-4xl">
+          <DialogContent className="glass-panel max-w-[95vw] max-h-[90vh] overflow-y-auto sm:max-w-4xl">
             <DialogHeader>
-              <DialogTitle>Chọn gói VPS</DialogTitle>
-              <DialogDescription>Chọn cấu hình máy và hệ điều hành để bắt đầu.</DialogDescription>
+              <DialogTitle className="text-lg sm:text-xl">Chọn gói VPS</DialogTitle>
+              <DialogDescription className="text-sm">Chọn cấu hình máy và hệ điều hành để bắt đầu.</DialogDescription>
             </DialogHeader>
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               <div>
                 <p className="text-sm font-semibold mb-2">Gói khả dụng</p>
                 {productsLoading && <p className="text-sm text-muted-foreground px-1">Đang tải gói…</p>}
@@ -484,7 +484,7 @@ const isLaunchDisabled = !selectedProduct ||
                   <p className="text-sm text-muted-foreground px-1">Hiện chưa có gói khả dụng.</p>
                 )}
                 {!productsLoading && products.length > 0 && (
-                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
+                  <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                     {products.map((product) => {
                       const isActive = selectedProduct?.id === product.id;
                       return (
@@ -501,16 +501,16 @@ const isLaunchDisabled = !selectedProduct ||
                             }
                           }}
                         >
-                          <CardHeader>
-                            <CardTitle className="text-lg">{product.name}</CardTitle>
-                            <CardDescription className="text-xs line-clamp-3">
+                          <CardHeader className="pb-2 sm:pb-4">
+                            <CardTitle className="text-base sm:text-lg">{product.name}</CardTitle>
+                            <CardDescription className="text-xs line-clamp-2 sm:line-clamp-3">
                               {product.description || "Tài nguyên VPS được quản lý."}
                             </CardDescription>
                           </CardHeader>
-                          <CardContent>
-                            <div className="text-2xl font-semibold">
+                          <CardContent className="pt-0">
+                            <div className="text-lg sm:text-2xl font-semibold">
                               {product.price_coins.toLocaleString()}{" "}
-                              <span className="text-sm text-muted-foreground">coin</span>
+                              <span className="text-xs sm:text-sm text-muted-foreground">coin</span>
                             </div>
                           </CardContent>
                         </Card>
@@ -527,7 +527,7 @@ const isLaunchDisabled = !selectedProduct ||
                     : "Chọn gói ở trên để mở tùy chọn hệ điều hành."}
                 </p>
                 {selectedProduct && availability && (
-                  <div className="mt-2 p-2 rounded-md border border-border/40 bg-muted/20">
+                  <div className="mt-2 p-2 sm:p-3 rounded-md border border-border/40 bg-muted/20">
                     <div className="flex items-center gap-2 text-xs mb-2">
                       <div className={`w-2 h-2 rounded-full ${availability.available ? 'bg-green-500' : 'bg-red-500'}`}></div>
                       <span className="font-medium">
@@ -546,7 +546,7 @@ const isLaunchDisabled = !selectedProduct ||
                           {availability.workers.map((worker) => (
                             <div 
                               key={worker.id}
-                              className={`flex items-center justify-between p-1.5 rounded-md border ${
+                              className={`flex items-center justify-between p-2 sm:p-1.5 rounded-md border ${
                                 selectedWorkerId === worker.id 
                                   ? 'border-primary bg-primary/5' 
                                   : 'border-border/40 hover:border-primary/40 hover:bg-primary/5'
@@ -574,7 +574,7 @@ const isLaunchDisabled = !selectedProduct ||
                     )}
                   </div>
                 )}
-                <div className="mt-3 grid gap-4 grid-cols-1 md:grid-cols-2">
+                <div className="mt-3 grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2">
                   {VM_VARIANTS.map((variant) => {
                     const isSelected = selectedVariant === variant;
                     const disabled = !selectedProduct;
@@ -600,14 +600,14 @@ const isLaunchDisabled = !selectedProduct ||
                           }
                         }}
                       >
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2 text-lg">
+                        <CardHeader className="pb-2 sm:pb-4">
+                          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                             <Server className="w-4 h-4" />
                             {VARIANT_LABELS[variant]}
                           </CardTitle>
                           <CardDescription className="text-xs">{VARIANT_DESCRIPTIONS[variant]}</CardDescription>
                         </CardHeader>
-                        <CardContent className="text-xs text-muted-foreground space-y-1">
+                        <CardContent className="text-xs text-muted-foreground space-y-1 pt-0">
                           {defaultVariant === variant && (
                             <div className="font-medium text-primary">Mặc định cho gói này</div>
                           )}
@@ -630,10 +630,11 @@ const isLaunchDisabled = !selectedProduct ||
                 </p>
               )}
             </div>
-            <DialogFooter className="flex justify-end gap-3 flex-wrap">
+            <DialogFooter className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
+                className="w-full sm:w-auto"
                 onClick={() => {
                   resetLauncherState();
                   setLauncherOpen(false);

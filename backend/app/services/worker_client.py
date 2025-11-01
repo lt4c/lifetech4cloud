@@ -245,6 +245,9 @@ class WorkerClient:
         url = urljoin(base + "/", "tokenleft")
         timeout = httpx.Timeout(10.0, connect=5.0)
         verify = getattr(self, "_verify", get_settings().worker_verify_tls)
+        
+        worker_name = worker.name if worker else "default"
+        
         async with httpx.AsyncClient(timeout=timeout, verify=verify) as client:
             try:
                 response = await client.get(url)
@@ -252,14 +255,26 @@ class WorkerClient:
                 try:
                     payload: Any = response.json()
                     total = int((payload or {}).get("totalSlots", 0))
-                except Exception:
-                    total = -1
-            except httpx.HTTPError:
+                    print(f"[DEBUG] Worker '{worker_name}' token_left: {total} (URL: {url})")
+                    return total
+                except Exception as json_error:
+                    print(f"[DEBUG] Worker '{worker_name}' JSON parse error: {json_error}, response: {response.text}")
+                    return -1
+            except httpx.TimeoutException as timeout_error:
+                print(f"[DEBUG] Worker '{worker_name}' timeout error: {timeout_error} (URL: {url})")
+                return -1
+            except httpx.ConnectError as connect_error:
+                print(f"[DEBUG] Worker '{worker_name}' connection error: {connect_error} (URL: {url})")
+                return -1
+            except httpx.HTTPStatusError as http_error:
+                print(f"[DEBUG] Worker '{worker_name}' HTTP error: {http_error.response.status_code} - {http_error.response.text} (URL: {url})")
+                return -1
+            except httpx.HTTPError as http_error:
+                print(f"[DEBUG] Worker '{worker_name}' HTTP error: {http_error} (URL: {url})")
                 # If the worker is unreachable or the endpoint errors, fall back to
                 # "unknown" so callers can decide whether to block. We return -1
                 # to signal unknown, and only an explicit 0 should block usage.
-                total = -1
-        return total
+                return -1
 
     async def health(self, *, worker: Worker | None = None) -> dict[str, Any]:
         """Check worker health endpoint."""

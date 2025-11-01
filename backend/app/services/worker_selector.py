@@ -33,6 +33,8 @@ class WorkerSelector:
 
     def get_all_workers_for_product(self, product_id, *, exclude: Optional[Set] = None) -> list[Worker]:
         """Lấy tất cả worker cho một sản phẩm cụ thể."""
+        print(f"[DEBUG] WorkerSelector.get_all_workers_for_product called for product_id: {product_id}")
+        
         stmt = (
             select(Worker)
             .join(vps_product_workers, Worker.id == vps_product_workers.c.worker_id)
@@ -40,14 +42,29 @@ class WorkerSelector:
             .where(Worker.status == "active")
             .order_by(Worker.created_at.desc())
         )
-        workers = self._filter_excluded(list(self.db.scalars(stmt)), exclude)
+        workers = list(self.db.scalars(stmt))
+        print(f"[DEBUG] Found {len(workers)} workers directly assigned to product {product_id}")
+        for w in workers:
+            print(f"[DEBUG]   - Worker: {w.name} (ID: {w.id}, Status: {w.status})")
+        
+        workers = self._filter_excluded(workers, exclude)
+        print(f"[DEBUG] After filtering excluded workers: {len(workers)} workers remain")
+        
         if not workers:
+            print(f"[DEBUG] No workers found for product {product_id}, using fallback to all active workers")
             fallback_stmt = (
                 select(Worker)
                 .where(Worker.status == "active")
                 .order_by(Worker.created_at.desc())
             )
-            workers = self._filter_excluded(list(self.db.scalars(fallback_stmt)), exclude)
+            fallback_workers = list(self.db.scalars(fallback_stmt))
+            print(f"[DEBUG] Fallback found {len(fallback_workers)} active workers")
+            for w in fallback_workers:
+                print(f"[DEBUG]   - Fallback Worker: {w.name} (ID: {w.id}, Status: {w.status})")
+            workers = self._filter_excluded(fallback_workers, exclude)
+            print(f"[DEBUG] After filtering excluded fallback workers: {len(workers)} workers remain")
+        
+        print(f"[DEBUG] Returning {len(workers)} workers for product {product_id}")
         return workers
 
     def select_for_product(self, product_id, *, exclude: Optional[Set] = None) -> Optional[Worker]:
