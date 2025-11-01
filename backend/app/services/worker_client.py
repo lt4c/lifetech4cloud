@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from typing import Any
 from urllib.parse import urljoin
 
@@ -15,7 +16,7 @@ class WorkerClient:
     def __init__(self, base_url: str | None = None, *, verify: bool | None = None) -> None:
         if verify is None:
             verify = get_settings().worker_verify_tls
-        timeout = httpx.Timeout(600.0, connect=30.0)
+        timeout = httpx.Timeout(900.0, connect=45.0, read=900.0, write=900.0)
         verify_value = verify if verify is not None else get_settings().worker_verify_tls
         self._client = httpx.AsyncClient(timeout=timeout, verify=verify_value)
         self._base_url = base_url.rstrip("/") if base_url else None
@@ -178,6 +179,30 @@ class WorkerClient:
 
         return response.text
 
+    @staticmethod
+    def _truthy_payload(value: Any) -> bool:
+        if value is True:
+            return True
+        if isinstance(value, (int, float)):
+            return value == 1
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            return normalized in {"true", "ok", "success", "done", "1"}
+        if isinstance(value, Mapping):
+            for key in ("success", "ok", "result"):
+                if key in value:
+                    candidate = value[key]
+                    if isinstance(candidate, bool):
+                        if candidate:
+                            return True
+                    elif isinstance(candidate, (int, float, str)):
+                        if WorkerClient._truthy_payload(candidate):
+                            return True
+            status_value = value.get("status")
+            if isinstance(status_value, str) and status_value.strip().lower() in {"ok", "success", "done"}:
+                return True
+        return False
+
     async def add_worker_token(self, *, email: str, password: str, worker: Worker | None = None) -> bool:
         """Add worker token by logging into NVIDIA system."""
         base = self._base(worker)
@@ -190,18 +215,27 @@ class WorkerClient:
             try:
                 data = response.json()
             except Exception:
-                text = response.text.strip().lower()
-                if text == "true":
+                text = response.text.strip()
+                if text and self._truthy_payload(text):
+                    return True
+                if not text:
                     return True
                 raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="invalid_worker_response")
-            if data is True:
-                return True
-            if isinstance(data, str) and data.strip().lower() == "true":
-                return True
-            if isinstance(data, dict) and data.get("success") is True:
-                return True
-
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"unexpected_worker_response: {data}")
+            else:
+                if self._truthy_payload(data):
+                    return True
+                if isinstance(data, Mapping):
+                    error_hint = (
+                        data.get("error")
+                        or data.get("message")
+                        or data.get("detail")
+                    )
+                    if error_hint:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=str(error_hint),
+                        )
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"unexpected_worker_response: {data}")
 
         # Parse structured error payloads from worker for better messaging
         raw_error: str | None = None
