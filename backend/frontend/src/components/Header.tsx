@@ -48,6 +48,7 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full glass-panel border-b">
       <div className="flex h-16 items-center gap-4 px-6">
         <SidebarTrigger />
+        <iframe src="https://status.lt4c.io.vn/badge?theme=dark" width={250} height={30} style={{ border: "none", overflow: "hidden", colorScheme: "normal" }} className="ml-2" />
         <div className="flex-1" />
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 px-4 py-2 rounded-lg glass-card">
